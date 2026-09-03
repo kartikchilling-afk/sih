@@ -66,11 +66,24 @@ export function useSpeech(lang: Lang) {
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = langCodes[lang];
     utter.rate = 0.9;
+    const pickVoice = () => {
+      const voices = synthRef.current?.getVoices() || [];
+      if (voices.length === 0) return;
+      const langPrefix = langCodes[lang].split('-')[0];
+      const match = voices.find((v) => v.lang.startsWith(langPrefix)) || voices.find((v) => v.lang.startsWith('en'));
+      if (match) utter.voice = match;
+    };
+    pickVoice();
     utter.onstart = () => setIsSpeaking(true);
     utter.onend = () => setIsSpeaking(false);
     utter.onerror = () => setIsSpeaking(false);
     synthRef.current.speak(utter);
   }, [lang]);
+
+  useEffect(() => {
+    if (!synthRef.current) return;
+    synthRef.current.onvoiceschanged = () => { synthRef.current?.getVoices(); };
+  }, []);
 
   const stopSpeaking = useCallback(() => {
     synthRef.current?.cancel();
