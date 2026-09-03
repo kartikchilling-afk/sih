@@ -81,6 +81,7 @@ export default function App() {
   const [intakeError, setIntakeError] = useState('');
   const [symptomSelected, setSymptomSelected] = useState(false);
   const [selectedSymptom, setSelectedSymptom] = useState<string>('');
+  const [otherSymptomText, setOtherSymptomText] = useState('');
 
   const [uploadCategory, setUploadCategory] = useState('prescription');
   const [uploadConsent, setUploadConsent] = useState(false);
@@ -277,6 +278,8 @@ export default function App() {
     return true;
   };
 
+  const symptomLabel = selectedSymptom === 'chestPain' ? t('intake.chestPain') : selectedSymptom === 'breathing' ? t('intake.breathing') : selectedSymptom === 'weakness' ? t('intake.weakness') : selectedSymptom === 'other' ? (otherSymptomText || t('intake.otherSymptom')) : '';
+
   // Finish intake - save health story and generate report
   const finishIntake = async () => {
     if (!patientId) return;
@@ -287,7 +290,7 @@ export default function App() {
       drug_allergy: 'Not yet captured',
       personal_history: ayushMode ? 'AYUSH lifestyle context included' : 'Lifestyle context pending',
       ayush_mode: ayushMode, prior_surgery: priorSurgery, has_red_flag: hasRedFlag,
-      red_flag_note: hasRedFlag ? 'Severe chest pain reported' : '',
+      red_flag_note: hasRedFlag ? symptomLabel : '',
       status: hasRedFlag ? 'flagged' : 'complete', language: langNames[lang],
     }).select().single();
 
@@ -303,7 +306,7 @@ export default function App() {
         drug_allergy: 'Not yet captured',
         personal_history: ayushMode ? 'AYUSH lifestyle context included' : 'Lifestyle context pending',
         ayush_mode: ayushMode, prior_surgery: priorSurgery, has_red_flag: hasRedFlag,
-        red_flag_note: hasRedFlag ? 'Severe chest pain reported' : '',
+        red_flag_note: hasRedFlag ? symptomLabel : '',
         physician_notes: '',
         diagnosis: '',
         prescription: '',
@@ -342,6 +345,7 @@ export default function App() {
     setIntakeError('');
     setSymptomSelected(false);
     setSelectedSymptom('');
+    setOtherSymptomText('');
     setModal('intake');
     setTimeout(() => speech.speak(t('intake.titleStart')), 300);
   };
@@ -538,10 +542,11 @@ export default function App() {
               <div className="question-title"><MessageCircle size={19} /><div><span>{t('intake.question02')}</span><strong>{t('intake.symptomQ')}</strong></div></div>
               <p className="helper-text">{t('intake.symptomHelper')}</p>
               <div className="symptom-grid">
-                <button className={selectedSymptom === 'chestPain' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('chestPain'); setHasRedFlag(true); setSymptomSelected(true); }}><AlertTriangle size={18} /><span>{t('intake.chestPain')}</span></button>
-                <button className={selectedSymptom === 'breathing' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('breathing'); setHasRedFlag(true); setSymptomSelected(true); }}><HeartPulse size={18} /><span>{t('intake.breathing')}</span></button>
-                <button className={selectedSymptom === 'weakness' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('weakness'); setHasRedFlag(true); setSymptomSelected(true); }}><Activity size={18} /><span>{t('intake.weakness')}</span></button>
-                <button className={selectedSymptom === 'none' ? 'symptom-card selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('none'); setHasRedFlag(false); setSymptomSelected(true); }}><BadgeCheck size={18} /><span>{t('intake.noneSymptom')}</span></button>
+                <button className={selectedSymptom === 'chestPain' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('chestPain'); setHasRedFlag(true); setSymptomSelected(true); }}><div className="symptom-icon-3d"><AlertTriangle size={20} /></div><span>{t('intake.chestPain')}</span></button>
+                <button className={selectedSymptom === 'breathing' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('breathing'); setHasRedFlag(true); setSymptomSelected(true); }}><div className="symptom-icon-3d"><HeartPulse size={20} /></div><span>{t('intake.breathing')}</span></button>
+                <button className={selectedSymptom === 'weakness' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('weakness'); setHasRedFlag(true); setSymptomSelected(true); }}><div className="symptom-icon-3d"><Activity size={20} /></div><span>{t('intake.weakness')}</span></button>
+                <button className={selectedSymptom === 'other' ? 'symptom-card selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('other'); setHasRedFlag(false); setSymptomSelected(true); }}><div className="symptom-icon-3d"><CircleHelp size={20} /></div><span>{t('intake.otherSymptom')}</span></button>
+                {selectedSymptom === 'other' && <textarea className="symptom-other-input" placeholder={t('intake.otherSymptomPlaceholder')} value={otherSymptomText} onChange={(e) => setOtherSymptomText(e.target.value)} />}
               </div>
               {intakeError && !symptomSelected && <div className="error-msg" style={{ marginTop: '10px' }}>{t('intake.selectSymptom')}</div>}
               {hasRedFlag && <div className="red-flag-notice"><AlertTriangle size={18} /><span><strong>{t('intake.redFlagNotice')}</strong> {t('intake.redFlagNoticeBody')}</span></div>}
@@ -558,6 +563,7 @@ export default function App() {
               <div className="summary-ready"><div className="summary-check"><Check size={25} /></div><div><strong>{t('intake.readyForReview')}</strong><span>{t('intake.structuredFrom')}</span></div></div>
               <div className="summary-list">
                 <div><span>{t('intake.chiefConcern')}</span><strong>{chiefConcern || t('intake.placeholder')}</strong></div>
+                <div><span>{t('intake.symptomQ')}</span><strong>{symptomLabel || '-'}</strong></div>
                 <div><span>{t('intake.symptomDuration')}</span><strong>{symptomDuration}</strong></div>
                 <div><span>{t('intake.severity')}</span><strong>{severity ? t(`intake.${severity}`) : '-'}</strong></div>
                 <div><span>{t('intake.currentMeds')}</span><strong>{currentMeds || '-'}</strong></div>
