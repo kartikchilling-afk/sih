@@ -10,7 +10,7 @@ import { translate, langNames, type Lang } from '@/lib/i18n';
 import { useSpeech } from '@/lib/useSpeech';
 
 type Section = 'Overview' | 'Clinical summary' | 'My history' | 'Documents';
-type ModalKind = 'intake' | 'upload' | 'profile' | 'consent' | 'report' | null;
+type ModalKind = 'intake' | 'upload' | 'profile' | 'consent' | 'report' | 'howitworks' | 'docview' | null;
 
 const navKeys = ['nav.overview', 'nav.clinicalSummary', 'nav.myHistory', 'nav.documents'] as const;
 const navIcons = [Activity, FileSignature, History, FileText];
@@ -66,6 +66,7 @@ export default function App() {
   const [healthReports, setHealthReports] = useState<HealthReport[]>([]);
   const [activeReport, setActiveReport] = useState<HealthReport | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [activeDoc, setActiveDoc] = useState<MedicalDocument | null>(null);
 
   const [intakeStep, setIntakeStep] = useState(1);
   const [chiefConcern, setChiefConcern] = useState('');
@@ -399,7 +400,7 @@ export default function App() {
             </button>
           ))}
           <p className="nav-label nav-label-spaced">{t('nav.support')}</p>
-          <button className="nav-item"><CircleHelp size={18} /><span>{t('nav.howItWorks')}</span></button>
+          <button className="nav-item" onClick={() => setModal('howitworks')}><CircleHelp size={18} /><span>{t('nav.howItWorks')}</span></button>
           <button className="nav-item" onClick={() => setModal('consent')}><ShieldCheck size={18} /><span>{t('nav.privacyConsent')}</span></button>
         </nav>
         <div className="sidebar-bottom">
@@ -494,7 +495,7 @@ export default function App() {
           {activeSection === 'Documents' && (
             <section className="documents-view">
               <div className="section-heading"><div><p className="eyebrow">{t('docs.eyebrow')}</p><h2>{t('docs.title')}</h2><p className="section-copy">{t('docs.body')}</p></div><button className="primary-button small" onClick={() => setModal('upload')}><Plus size={16} /> {t('docs.add')}</button></div>
-              <div className="document-grid">{documents.length === 0 ? <div className="empty-doc panel"><ScanLine size={26} /><strong>{t('docs.empty')}</strong><span>{t('docs.emptyBody')}</span><button className="text-button" onClick={() => setModal('upload')}>{t('docs.uploadFirst')} <ArrowRight size={14} /></button></div> : documents.map((d) => <div className="document-tile" key={d.id}><div className="record-icon green"><FileCheck2 size={18} /></div><div className="doc-info"><strong>{d.filename}</strong><span>{t('docs.uploaded')} {new Date(d.created_at).toLocaleDateString()} · {t('docs.ready')}</span></div><button className="text-button">{t('docs.view')} <ArrowRight size={14} /></button><button className="text-button delete-btn" onClick={() => deleteDocument(d.id)}><X size={14} /> {t('docs.delete')}</button></div>)}</div>
+              <div className="document-grid">{documents.length === 0 ? <div className="empty-doc panel"><ScanLine size={26} /><strong>{t('docs.empty')}</strong><span>{t('docs.emptyBody')}</span><button className="text-button" onClick={() => setModal('upload')}>{t('docs.uploadFirst')} <ArrowRight size={14} /></button></div> : documents.map((d) => <div className="document-tile" key={d.id}><div className="record-icon green"><FileCheck2 size={18} /></div><div className="doc-info"><strong>{d.filename}</strong><span>{t('docs.uploaded')} {new Date(d.created_at).toLocaleDateString()} · {t('docs.ready')}</span></div><button className="text-button" onClick={() => { setActiveDoc(d); setModal('docview'); }}>{t('docs.view')} <ArrowRight size={14} /></button><button className="text-button delete-btn" onClick={() => deleteDocument(d.id)}><X size={14} /> {t('docs.delete')}</button></div>)}</div>
             </section>
           )}
         </div>
@@ -712,6 +713,60 @@ export default function App() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* How It Works Modal */}
+      {modal === 'howitworks' && (
+        <div className="modal-backdrop" onClick={() => setModal(null)}>
+          <div className="howitworks-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setModal(null)}><X size={18} /></button>
+            <div className="modal-icon"><CircleHelp size={22} /></div>
+            <p className="eyebrow">{t('howitworks.eyebrow')}</p>
+            <h2>{t('howitworks.title')}</h2>
+            <p className="modal-copy">{t('howitworks.body')}</p>
+            <div className="howitworks-steps">
+              <div className="howitworks-step"><div className="howitworks-step-num"><Mic size={16} /></div><div><strong>{t('howitworks.step1Title')}</strong><span>{t('howitworks.step1Desc')}</span></div></div>
+              <div className="howitworks-step"><div className="howitworks-step-num"><FileSignature size={16} /></div><div><strong>{t('howitworks.step2Title')}</strong><span>{t('howitworks.step2Desc')}</span></div></div>
+              <div className="howitworks-step"><div className="howitworks-step-num"><ScanLine size={16} /></div><div><strong>{t('howitworks.step3Title')}</strong><span>{t('howitworks.step3Desc')}</span></div></div>
+              <div className="howitworks-step"><div className="howitworks-step-num"><BadgeCheck size={16} /></div><div><strong>{t('howitworks.step4Title')}</strong><span>{t('howitworks.step4Desc')}</span></div></div>
+            </div>
+            <button className="primary-button" onClick={() => setModal(null)}>{t('common.close')}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Document Viewer Modal */}
+      {modal === 'docview' && activeDoc && (
+        <div className="modal-backdrop" onClick={() => { setModal(null); setActiveDoc(null); }}>
+          <div className="docview-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => { setModal(null); setActiveDoc(null); }}><X size={18} /></button>
+            <div className="report-header">
+              <div>
+                <p className="eyebrow">{t('docs.eyebrow')}</p>
+                <h2>{activeDoc.filename}</h2>
+                <p className="report-date">{t('docs.uploaded')} {new Date(activeDoc.created_at).toLocaleDateString(lang === 'en' ? 'en-GB' : lang === 'hi' ? 'hi-IN' : 'mr-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+              </div>
+              <span className="report-status-badge generated">{activeDoc.category}</span>
+            </div>
+            <div className="report-section">
+              <div className="report-section-title"><FileText size={15} /> {t('docview.fileInfo')}</div>
+              <div className="report-grid">
+                <div className="report-grid-item"><label>{t('docview.fileType')}</label><span>{activeDoc.file_type.toUpperCase()}</span></div>
+                <div className="report-grid-item"><label>{t('docview.fileSize')}</label><span>{(activeDoc.file_size / 1024).toFixed(0)} KB</span></div>
+                <div className="report-grid-item"><label>{t('docview.category')}</label><span>{t(`upload.${activeDoc.category === 'lab_report' ? 'labReport' : activeDoc.category === 'discharge_summary' ? 'discharge' : activeDoc.category}`)}</span></div>
+                <div className="report-grid-item"><label>{t('docview.ocrStatus')}</label><span>{activeDoc.ocr_status}</span></div>
+              </div>
+            </div>
+            <div className="report-section">
+              <div className="report-section-title"><ScanLine size={15} /> {t('docview.ocrText')}</div>
+              <div className="report-section-body">{activeDoc.ocr_extracted_text || t('docview.noOcrText')}</div>
+            </div>
+            <div className="report-footer">
+              <span><LockKeyhole size={14} /> {t('summary.draftPrivate')}</span>
+              <button className="primary-button" onClick={() => { setModal(null); setActiveDoc(null); }}>{t('common.close')} <X size={16} /></button>
+            </div>
           </div>
         </div>
       )}
