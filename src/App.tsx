@@ -79,6 +79,7 @@ export default function App() {
   const [intakeConsent, setIntakeConsent] = useState(false);
   const [intakeError, setIntakeError] = useState('');
   const [symptomSelected, setSymptomSelected] = useState(false);
+  const [selectedSymptom, setSelectedSymptom] = useState<string>('');
 
   const [uploadCategory, setUploadCategory] = useState('prescription');
   const [uploadConsent, setUploadConsent] = useState(false);
@@ -339,6 +340,7 @@ export default function App() {
     setIntakeConsent(false);
     setIntakeError('');
     setSymptomSelected(false);
+    setSelectedSymptom('');
     setModal('intake');
     setTimeout(() => speech.speak(t('intake.titleStart')), 300);
   };
@@ -535,10 +537,10 @@ export default function App() {
               <div className="question-title"><MessageCircle size={19} /><div><span>{t('intake.question02')}</span><strong>{t('intake.symptomQ')}</strong></div></div>
               <p className="helper-text">{t('intake.symptomHelper')}</p>
               <div className="symptom-grid">
-                <button className={hasRedFlag ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setHasRedFlag(!hasRedFlag); setSymptomSelected(true); }}><AlertTriangle size={18} /><span>{t('intake.chestPain')}</span></button>
-                <button className="symptom-card" onClick={() => setSymptomSelected(true)}><HeartPulse size={18} /><span>{t('intake.breathing')}</span></button>
-                <button className="symptom-card" onClick={() => setSymptomSelected(true)}><Activity size={18} /><span>{t('intake.weakness')}</span></button>
-                <button className="symptom-card" onClick={() => { setSymptomSelected(true); setHasRedFlag(false); }}><BadgeCheck size={18} /><span>{t('intake.noneSymptom')}</span></button>
+                <button className={selectedSymptom === 'chestPain' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('chestPain'); setHasRedFlag(true); setSymptomSelected(true); }}><AlertTriangle size={18} /><span>{t('intake.chestPain')}</span></button>
+                <button className={selectedSymptom === 'breathing' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('breathing'); setHasRedFlag(true); setSymptomSelected(true); }}><HeartPulse size={18} /><span>{t('intake.breathing')}</span></button>
+                <button className={selectedSymptom === 'weakness' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('weakness'); setHasRedFlag(true); setSymptomSelected(true); }}><Activity size={18} /><span>{t('intake.weakness')}</span></button>
+                <button className={selectedSymptom === 'none' ? 'symptom-card selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('none'); setHasRedFlag(false); setSymptomSelected(true); }}><BadgeCheck size={18} /><span>{t('intake.noneSymptom')}</span></button>
               </div>
               {intakeError && !symptomSelected && <div className="error-msg" style={{ marginTop: '10px' }}>{t('intake.selectSymptom')}</div>}
               {hasRedFlag && <div className="red-flag-notice"><AlertTriangle size={18} /><span><strong>{t('intake.redFlagNotice')}</strong> {t('intake.redFlagNoticeBody')}</span></div>}
