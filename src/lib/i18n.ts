@@ -314,6 +314,26 @@ const en: Dict = {
   'history.noReport': 'Report not generated yet',
 
   'profile.loadingProfile': 'Loading your profile…',
+
+  'howitworks.eyebrow': 'GETTING STARTED',
+  'howitworks.title': 'How MediKiosk works',
+  'howitworks.body': 'MediKiosk turns your visit into a structured clinical summary before you see the doctor. Here\'s the 4-step process:',
+  'howitworks.step1Title': 'Share your story',
+  'howitworks.step1Desc': 'Answer a few questions by voice or touch in your language. Speak naturally — we capture everything.',
+  'howitworks.step2Title': 'Safety screening',
+  'howitworks.step2Desc': 'We check for urgent symptoms so the care team can prioritize if needed.',
+  'howitworks.step3Title': 'Add documents',
+  'howitworks.step3Desc': 'Upload prescriptions, lab reports, or scans. Our OCR reader digitizes them for your doctor.',
+  'howitworks.step4Title': 'Review & share',
+  'howitworks.step4Desc': 'Your structured summary is ready for physician review. You consent before anything is shared.',
+
+  'docview.fileInfo': 'File information',
+  'docview.fileType': 'File type',
+  'docview.fileSize': 'File size',
+  'docview.category': 'Category',
+  'docview.ocrStatus': 'OCR status',
+  'docview.ocrText': 'OCR extracted text',
+  'docview.noOcrText': 'No OCR text extracted yet.',
 };
 
 const hi: Dict = {
@@ -605,6 +625,26 @@ const hi: Dict = {
   'history.noReport': 'रिपोर्ट अभी तैयार नहीं',
 
   'profile.loadingProfile': 'आपकी प्रोफ़ाइल लोड हो रही है…',
+
+  'howitworks.eyebrow': 'शुरू करना',
+  'howitworks.title': 'मेडिकियोस्क कैसे काम करता है',
+  'howitworks.body': 'मेडिकियोस्क आपकी यात्रा को डॉक्टर से मिलने से पहले एक संरचित नैदानिक सारांश में बदल देता है। यहाँ 4-चरण प्रक्रिया है:',
+  'howitworks.step1Title': 'अपनी कहानी साझा करें',
+  'howitworks.step1Desc': 'अपनी भाषा में आवाज़ या स्पर्श से कुछ सवालों के जवाब दें। स्वाभाविक रूप से बोलें — हम सब कैप्चर करते हैं।',
+  'howitworks.step2Title': 'सुरक्षा जांच',
+  'howitworks.step2Desc': 'हम तत्काल लक्षणों की जांच करते हैं ताकि देखभाल टीम आवश्यक हो तो प्राथमिकता दे सके।',
+  'howitworks.step3Title': 'दस्तावेज़ जोड़ें',
+  'howitworks.step3Desc': 'पर्चे, लैब रिपोर्ट या स्कैन अपलोड करें। हमारा OCR पाठक उन्हें आपके डॉक्टर के लिए डिजिटाइज़ करता है।',
+  'howitworks.step4Title': 'समीक्षा और साझा करें',
+  'howitworks.step4Desc': 'आपका संरचित सारांश चिकित्सक समीक्षा के लिए तैयार है। कुछ भी साझा करने से पहले आप सहमति देते हैं।',
+
+  'docview.fileInfo': 'फ़ाइल जानकारी',
+  'docview.fileType': 'फ़ाइल प्रकार',
+  'docview.fileSize': 'फ़ाइल आकार',
+  'docview.category': 'श्रेणी',
+  'docview.ocrStatus': 'OCR स्थिति',
+  'docview.ocrText': 'OCR निकाला गया टेक्स्ट',
+  'docview.noOcrText': 'अभी तक कोई OCR टेक्स्ट नहीं निकाला गया।',
 };
 
 const mr: Dict = {
@@ -896,6 +936,26 @@ const mr: Dict = {
   'history.noReport': 'अहवाल अद्याप तयार नाही',
 
   'profile.loadingProfile': 'तुमची प्रोफाइल लोड होत आहे…',
+
+  'howitworks.eyebrow': 'सुरुवात',
+  'howitworks.title': 'मेडिकियोस्क कसे काम करते',
+  'howitworks.body': 'मेडिकियोस्क तुमच्या भेटीला डॉक्टरला भेटण्यापूर्वी एका संरचित क्लिनिकल सारांशात बदलते. येथे 4-चरण प्रक्रिया आहे:',
+  'howitworks.step1Title': 'तुमची कथा सामायिक करा',
+  'howitworks.step1Desc': 'तुमच्या भाषेत आवाज किंवा स्पर्शाने काही प्रश्नांची उत्तरे द्या. नैसर्गिकरित्या बोला — आम्ही सर्व कॅप्चर करतो.',
+  'howitworks.step2Title': 'सुरक्षा तपासणी',
+  'howitworks.step2Desc': 'आम्ही तातडीची लक्षणे तपासतो जेणेकरून देखभाल टीम आवश्यक असल्यास प्राधान्य देऊ शकेल.',
+  'howitworks.step3Title': 'दस्तावेज जोडा',
+  'howitworks.step3Desc': 'पर्ची, लॅब अहवाल किंवा स्कॅन अपलोड करा. आमचा OCR वाचक त्यांना तुमच्या डॉक्टरसाठी डिजिटाइज करतो.',
+  'howitworks.step4Title': 'समीक्षा आणि सामायिक करा',
+  'howitworks.step4Desc': 'तुमचा संरचित सारांश वैद्य समीक्षेसाठी तयार आहे. काहीही सामायिक करण्यापूर्वी तुम्ही संमती देता.',
+
+  'docview.fileInfo': 'फाइल माहिती',
+  'docview.fileType': 'फाइल प्रकार',
+  'docview.fileSize': 'फाइल आकार',
+  'docview.category': 'श्रेणी',
+  'docview.ocrStatus': 'OCR स्थिती',
+  'docview.ocrText': 'OCR निकाललेला मजकूर',
+  'docview.noOcrText': 'अद्याप कोणताही OCR मजकूर निकालला नाही.',
 };
 
 const dictionaries: Record<Lang, Dict> = { en, hi, mr };
