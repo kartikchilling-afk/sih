@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Activity, Accessibility, AlertTriangle, ArrowRight, BadgeCheck, Bell, Check, ChevronDown,
   ChevronRight, CircleHelp, ClipboardList, FileCheck2, FileSignature, FileText, HeartPulse,
   History, Languages, LockKeyhole, MessageCircle, Mic, Paperclip, Play, Plus, ScanLine,
   ShieldCheck, Sparkles, Stethoscope, UserRound, Volume2, X,
 } from 'lucide-react';
-import { isSupabaseConfigured, supabase, type Patient, type MedicalDocument, type ActivityLog, type ConsentRecord, type HealthStory, type HealthReport } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase, type Patient, type MedicalDocument, type DocumentIntelligenceResult, type ActivityLog, type ConsentRecord, type HealthStory, type HealthReport } from '@/lib/supabase';
 import { translate, langNames, type Lang } from '@/lib/i18n';
 import { useSpeech } from '@/lib/useSpeech';
 
@@ -60,6 +60,7 @@ export default function App() {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [documents, setDocuments] = useState<MedicalDocument[]>([]);
+  const [documentResults, setDocumentResults] = useState<DocumentIntelligenceResult[]>([]);
   const [consents, setConsents] = useState<ConsentRecord[]>([]);
   const [healthStories, setHealthStories] = useState<HealthStory[]>([]);
   const [latestStory, setLatestStory] = useState<HealthStory | null>(null);
@@ -72,10 +73,17 @@ export default function App() {
   const [symptomDuration, setSymptomDuration] = useState('');
   const [severity, setSeverity] = useState('');
   const [currentMeds, setCurrentMeds] = useState('');
+  const [pastMedicalHistory, setPastMedicalHistory] = useState('');
+  const [drugAllergies, setDrugAllergies] = useState('');
+  const [familyHistory, setFamilyHistory] = useState('');
+  const [personalHistory, setPersonalHistory] = useState('');
+  const [reviewOfSystems, setReviewOfSystems] = useState('');
+  const [ayushAssessment, setAyushAssessment] = useState('');
   const [emergencyContact, setEmergencyContact] = useState('');
   const [ayushMode, setAyushMode] = useState(false);
   const [priorSurgery, setPriorSurgery] = useState(false);
   const [hasRedFlag, setHasRedFlag] = useState(false);
+  const [redFlagDetail, setRedFlagDetail] = useState('');
   const [intakeConsent, setIntakeConsent] = useState(false);
   const [intakeError, setIntakeError] = useState('');
   const [symptomSelected, setSymptomSelected] = useState(false);
@@ -86,6 +94,8 @@ export default function App() {
   const [uploadConsent, setUploadConsent] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [profileForm, setProfileForm] = useState<Partial<Patient>>({});
   const [savingProfile, setSavingProfile] = useState(false);
@@ -144,6 +154,14 @@ export default function App() {
   }, [patientId]);
 
   useEffect(() => { loadDocuments(); }, [loadDocuments]);
+
+  const loadDocumentResults = useCallback(async () => {
+    if (!patientId) return;
+    const { data } = await supabase.from('document_intelligence_results').select('*').eq('patient_id', patientId).order('updated_at', { ascending: false });
+    if (data) setDocumentResults(data as DocumentIntelligenceResult[]);
+  }, [patientId]);
+
+  useEffect(() => { loadDocumentResults(); }, [loadDocumentResults]);
 
   // Load consents
   const loadConsents = useCallback(async () => {
@@ -213,28 +231,80 @@ export default function App() {
     logActivity('consent_given', t('consent.saved'), '', 'complete');
   };
 
-  // Upload document
+  const handleFileSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setSelectedFile(null);
+      setUploadMsg('Please select a PDF document. Other file formats are not accepted.');
+      event.target.value = '';
+      return;
+    }
+    setSelectedFile(file);
+    setUploadMsg('');
+  };
+
+  // Upload the selected PDF to Supabase Storage, then save its metadata.
   const doUpload = async () => {
-    if (!patientId) return;
+    if (!patientId || !selectedFile) {
+      setUploadMsg('Please choose a PDF document before submitting.');
+      return;
+    }
     setUploading(true); setUploadMsg('');
-    const filename = `Medical_doc_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}.${uploadCategory === 'scan' ? 'jpg' : 'pdf'}`;
+    const documentConsent = consents.find((consent) => consent.consent_type === 'document_upload');
+    const consentPayload = { granted: true, granted_at: new Date().toISOString(), revoked_at: null };
+    const { error: consentError } = documentConsent
+      ? await supabase.from('consent_records').update(consentPayload).eq('id', documentConsent.id)
+      : await supabase.from('consent_records').insert({ patient_id: patientId, consent_type: 'document_upload', ...consentPayload });
+    if (consentError) {
+      setUploading(false);
+      setUploadMsg(`Upload error: ${consentError.message}`);
+      return;
+    }
+    const safeFilename = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storagePath = `${patientId}/${crypto.randomUUID()}-${safeFilename}`;
+    const { error: storageError } = await supabase.storage.from('medical-documents')
+      .upload(storagePath, selectedFile, { contentType: 'application/pdf', upsert: false });
+    if (storageError) {
+      setUploading(false);
+      setUploadMsg(`Upload error: ${storageError.message}`);
+      return;
+    }
     const { data, error } = await supabase.from('documents').insert({
-      patient_id: patientId, filename, file_type: uploadCategory === 'scan' ? 'jpg' : 'pdf',
-      file_size: 240000, category: uploadCategory, ocr_status: 'processed',
-      ocr_extracted_text: 'Document processed via OCR. Values ready for physician review.',
+      patient_id: patientId, filename: selectedFile.name, file_type: 'pdf', file_size: selectedFile.size,
+      storage_path: storagePath, category: uploadCategory, ocr_status: 'queued', ocr_extracted_text: '',
     }).select().single();
     setUploading(false);
-    if (error || !data) { setUploadMsg(t('upload.error')); return; }
+    if (error || !data) {
+      await supabase.storage.from('medical-documents').remove([storagePath]);
+      setUploadMsg(`Upload error: ${error?.message || t('upload.error')}`);
+      return;
+    }
     setUploadMsg(t('upload.success'));
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
     loadDocuments();
-    logActivity('document_uploaded', filename, t('docs.ready'), 'complete');
+    loadConsents();
+    void supabase.functions.invoke('process-document', { body: { documentId: data.id } }).then(() => {
+      loadDocuments();
+      loadDocumentResults();
+    });
+    logActivity('document_uploaded', selectedFile.name, t('docs.ready'), 'complete');
     setTimeout(() => { setModal(null); setUploadMsg(''); }, 1200);
   };
 
   // Delete document
   const deleteDocument = async (id: string) => {
+    const document = documents.find((item) => item.id === id);
+    if (document?.storage_path) await supabase.storage.from('medical-documents').remove([document.storage_path]);
     await supabase.from('documents').delete().eq('id', id);
     loadDocuments();
+  };
+
+  const openStoredDocument = async (document: MedicalDocument) => {
+    if (!document.storage_path) return;
+    const { data, error } = await supabase.storage.from('medical-documents').createSignedUrl(document.storage_path, 60);
+    if (!error && data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
   };
 
   // Validate intake step
@@ -277,11 +347,14 @@ export default function App() {
     const { data: storyData } = await supabase.from('health_stories').insert({
       patient_id: patientId, chief_concern: chiefConcern,
       history_of_present_illness: `Symptom duration: ${symptomDuration}. Severity: ${severity}. Current medications: ${currentMeds || 'None reported'}.`,
-      past_history: priorSurgery ? 'Previous admission or surgery reported' : 'No previous admission reported',
-      drug_allergy: 'Not yet captured',
-      personal_history: ayushMode ? 'AYUSH lifestyle context included' : 'Lifestyle context pending',
+      past_history: pastMedicalHistory || (priorSurgery ? 'Previous admission or surgery reported' : 'No previous admission reported'),
+      drug_allergy: drugAllergies || 'No known drug allergies reported',
+      personal_history: personalHistory || 'Not reported',
+      family_history: familyHistory || 'Not reported',
+      review_of_systems: reviewOfSystems || 'Not reported',
+      ayush_assessment: ayushMode ? (ayushAssessment || 'AYUSH context requested; detailed assessment pending') : '',
       ayush_mode: ayushMode, prior_surgery: priorSurgery, has_red_flag: hasRedFlag,
-      red_flag_note: hasRedFlag ? symptomLabel : '',
+      red_flag_note: hasRedFlag ? `${symptomLabel}${redFlagDetail ? ` - ${redFlagDetail}` : ''}` : '',
       status: hasRedFlag ? 'flagged' : 'complete', language: langNames[lang],
     }).select().single();
 
@@ -293,11 +366,14 @@ export default function App() {
         report_title: reportTitle,
         chief_concern: chiefConcern,
         hpi: `Symptom duration: ${symptomDuration}. Severity: ${severity}. Current medications: ${currentMeds || 'None reported'}.`,
-        past_history: priorSurgery ? 'Previous admission or surgery reported' : 'No previous admission reported',
-        drug_allergy: 'Not yet captured',
-        personal_history: ayushMode ? 'AYUSH lifestyle context included' : 'Lifestyle context pending',
+        past_history: pastMedicalHistory || (priorSurgery ? 'Previous admission or surgery reported' : 'No previous admission reported'),
+        drug_allergy: drugAllergies || 'No known drug allergies reported',
+        personal_history: personalHistory || 'Not reported',
+        family_history: familyHistory || 'Not reported',
+        review_of_systems: reviewOfSystems || 'Not reported',
+        ayush_assessment: ayushMode ? (ayushAssessment || 'AYUSH context requested; detailed assessment pending') : '',
         ayush_mode: ayushMode, prior_surgery: priorSurgery, has_red_flag: hasRedFlag,
-        red_flag_note: hasRedFlag ? symptomLabel : '',
+        red_flag_note: hasRedFlag ? `${symptomLabel}${redFlagDetail ? ` - ${redFlagDetail}` : ''}` : '',
         physician_notes: '',
         diagnosis: '',
         prescription: '',
@@ -327,10 +403,17 @@ export default function App() {
     setSymptomDuration('');
     setSeverity('');
     setCurrentMeds('');
+    setPastMedicalHistory('');
+    setDrugAllergies('');
+    setFamilyHistory('');
+    setPersonalHistory('');
+    setReviewOfSystems('');
+    setAyushAssessment('');
     setEmergencyContact('');
     setAyushMode(false);
     setPriorSurgery(false);
     setHasRedFlag(false);
+    setRedFlagDetail('');
     setIntakeConsent(false);
     setIntakeError('');
     setSymptomSelected(false);
@@ -441,8 +524,8 @@ export default function App() {
 
             <section className="feature-strip">
               <button className="feature-item" onClick={openIntake}><div className="feature-item-icon"><Accessibility size={18} /></div><div><strong>{t('feature.everyPatient')}</strong><span>{t('feature.everyPatientDesc')}</span></div><ChevronRight size={15} /></button>
-              <button className="feature-item" onClick={openIntake}><div className="feature-item-icon ayush"><HeartPulse size={18} /></div><div><strong>{t('feature.ayush')}</strong><span>{t('feature.ayushDesc')}</span></div><ChevronRight size={15} /></button>
-              <button className="feature-item alert-feature" onClick={openIntake}><div className="feature-item-icon alert"><AlertTriangle size={18} /></div><div><strong>{t('feature.redFlag')}</strong><span>{t('feature.redFlagDesc')}</span></div><ChevronRight size={15} /></button>
+              <button className="feature-item" onClick={openIntake}><div className="feature-item-icon ayush"><HeartPulse size={18} /></div><div><strong>Complete clinical history</strong><span>Medical, family, lifestyle and Ayurvedic context where relevant</span></div><ChevronRight size={15} /></button>
+              <button className="feature-item alert-feature" onClick={openIntake}><div className="feature-item-icon alert"><AlertTriangle size={18} /></div><div><strong>Priority triage</strong><span>Urgent symptoms prompt immediate care-team escalation</span></div><ChevronRight size={15} /></button>
             </section>
 
             <section className="content-grid">
@@ -469,8 +552,8 @@ export default function App() {
               <div className="review-banner"><div className="review-avatar">{patient?.avatar_initials || 'AS'}</div><div><strong>{patient?.name || 'Aarav Sharma'} <span>· {patient?.age || 34} years · {patient?.gender || 'Male'}</span></strong><p>{t('summary.presentingComplaint')} <i /> {new Date(latestStory.created_at).toLocaleDateString()}</p></div><div className="review-status"><span className="pulse-dot" /> {latestStory.has_red_flag ? t('summary.priorityAlert') : t('summary.priorityNormal')}</div></div>
               {latestStory.has_red_flag && <div className="review-alert"><AlertTriangle size={19} /><div><strong>{t('summary.priorityAlert')}</strong><span>{t('summary.alertBody')}</span></div><ChevronRight size={16} /></div>}
               <div className="summary-columns">
-                <div className="summary-panel panel"><div className="summary-panel-head"><div><p className="eyebrow">{t('summary.standardFormat')}</p><h3>{t('summary.presentingComplaint')}</h3></div></div><div className="complaint-block"><div className="complaint-icon"><MessageCircle size={20} /></div><div><strong>{latestStory.chief_concern || t('intake.placeholder')}</strong><span>{t('summary.capturedVia')} · {new Date(latestStory.created_at).toLocaleString()}</span></div></div><div className="clinical-rows"><div><span>{t('summary.hpi')}</span><strong>{latestStory.history_of_present_illness}</strong></div><div><span>{t('summary.pastMed')}</span><strong>{latestStory.past_history}</strong></div><div><span>{t('summary.drugAllergy')}</span><strong>{latestStory.drug_allergy}</strong></div><div><span>{t('summary.personalHistory')}</span><strong>{latestStory.personal_history}</strong></div></div></div>
-                <div className="summary-panel panel"><div className="summary-panel-head"><div><p className="eyebrow">{t('summary.digitizedRecords')}</p><h3>{t('summary.docsFindings')}</h3></div><button className="text-button" onClick={() => setActiveSection('Documents')}>{t('activity.viewAll')} <ArrowRight size={14} /></button></div>{documents.length > 0 ? documents.slice(0, 3).map((d) => <div className="finding-card" key={d.id}><div className="record-icon green"><FileCheck2 size={17} /></div><div><strong>{d.filename}</strong><span>{t('summary.ocrProcessed')}</span></div><BadgeCheck size={17} className="finding-check" /></div>) : <div className="finding-empty"><ScanLine size={22} /><span>{t('summary.noDocs')}</span><button className="text-button" onClick={() => setModal('upload')}>{t('summary.addOne')} <Plus size={14} /></button></div>}<div className="abha-linked"><ShieldCheck size={16} /><span>{t('summary.abhaPending')}</span><span className="pending-pill">{t('summary.pending')}</span></div></div>
+                <div className="summary-panel panel"><div className="summary-panel-head"><div><p className="eyebrow">{t('summary.standardFormat')}</p><h3>{t('summary.presentingComplaint')}</h3></div></div><div className="complaint-block"><div className="complaint-icon"><MessageCircle size={20} /></div><div><strong>{latestStory.chief_concern || t('intake.placeholder')}</strong><span>{t('summary.capturedVia')} · {new Date(latestStory.created_at).toLocaleString()}</span></div></div><div className="clinical-rows"><div><span>{t('summary.hpi')}</span><strong>{latestStory.history_of_present_illness}</strong></div><div><span>{t('summary.pastMed')}</span><strong>{latestStory.past_history}</strong></div><div><span>{t('summary.drugAllergy')}</span><strong>{latestStory.drug_allergy}</strong></div><div><span>Family history</span><strong>{latestStory.family_history || 'Not reported'}</strong></div><div><span>{t('summary.personalHistory')}</span><strong>{latestStory.personal_history}</strong></div><div><span>Review of systems</span><strong>{latestStory.review_of_systems || 'Not reported'}</strong></div>{latestStory.ayush_mode && <div><span>AYUSH assessment</span><strong>{latestStory.ayush_assessment || 'Pending'}</strong></div>}</div></div>
+                <div className="summary-panel panel"><div className="summary-panel-head"><div><p className="eyebrow">Document intelligence</p><h3>{t('summary.docsFindings')}</h3></div><button className="text-button" onClick={() => setActiveSection('Documents')}>{t('activity.viewAll')} <ArrowRight size={14} /></button></div>{documents.length > 0 ? documents.slice(0, 3).map((d) => <div className="finding-card" key={d.id}><div className="record-icon green"><FileCheck2 size={17} /></div><div><strong>{d.filename}</strong><span>{d.ocr_status === 'processed' ? t('summary.ocrProcessed') : 'Securely received - queued for digitisation'}</span></div>{d.ocr_status === 'processed' ? <BadgeCheck size={17} className="finding-check" /> : <span className="pending-pill">Queued</span>}</div>) : <div className="finding-empty"><ScanLine size={22} /><span>{t('summary.noDocs')}</span><button className="text-button" onClick={() => setModal('upload')}>{t('summary.addOne')} <Plus size={14} /></button></div>}<div className="abha-linked"><ShieldCheck size={16} /><span>{t('summary.abhaPending')}</span><span className="pending-pill">{t('summary.pending')}</span></div></div>
               </div>
               <div className="summary-footer"><span><LockKeyhole size={14} /> {t('summary.draftPrivate')}</span><button className="primary-button" onClick={() => openReport(latestStory.id)}><FileText size={16} /> {t('report.viewReport')} <ArrowRight size={16} /></button></div>
             </section>
@@ -489,7 +572,8 @@ export default function App() {
           {activeSection === 'Documents' && (
             <section className="documents-view">
               <div className="section-heading"><div><p className="eyebrow">{t('docs.eyebrow')}</p><h2>{t('docs.title')}</h2><p className="section-copy">{t('docs.body')}</p></div><button className="primary-button small" onClick={() => setModal('upload')}><Plus size={16} /> {t('docs.add')}</button></div>
-              <div className="document-grid">{documents.length === 0 ? <div className="empty-doc panel"><ScanLine size={26} /><strong>{t('docs.empty')}</strong><span>{t('docs.emptyBody')}</span><button className="text-button" onClick={() => setModal('upload')}>{t('docs.uploadFirst')} <ArrowRight size={14} /></button></div> : documents.map((d) => <div className="document-tile" key={d.id}><div className="record-icon green"><FileCheck2 size={18} /></div><div className="doc-info"><strong>{d.filename}</strong><span>{t('docs.uploaded')} {new Date(d.created_at).toLocaleDateString()} · {t('docs.ready')}</span></div><button className="text-button" onClick={() => { setActiveDoc(d); setModal('docview'); }}>{t('docs.view')} <ArrowRight size={14} /></button><button className="text-button delete-btn" onClick={() => deleteDocument(d.id)}><X size={14} /> {t('docs.delete')}</button></div>)}</div>
+              <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}><div className="finding-card"><ScanLine size={18} /><div><strong>1. Secure intake</strong><span>PDF stored with your documented consent</span></div></div><div className="finding-card"><FileText size={18} /><div><strong>2. Clinical digitisation</strong><span>Queued documents are ready for the OCR worker</span></div></div><div className="finding-card"><BadgeCheck size={18} /><div><strong>3. Clinician review</strong><span>Verified findings appear in your summary</span></div></div></div>
+              <div className="document-grid">{documents.length === 0 ? <div className="empty-doc panel"><ScanLine size={26} /><strong>{t('docs.empty')}</strong><span>{t('docs.emptyBody')}</span><button className="text-button" onClick={() => setModal('upload')}>{t('docs.uploadFirst')} <ArrowRight size={14} /></button></div> : documents.map((d) => <div className="document-tile" key={d.id}><div className="record-icon green"><FileCheck2 size={18} /></div><div className="doc-info"><strong>{d.filename}</strong><span>{t('docs.uploaded')} {new Date(d.created_at).toLocaleDateString()} · {d.ocr_status === 'processed' ? `${documentResults.find((result) => result.document_id === d.id)?.diagnoses.length || 0} diagnoses and ${documentResults.find((result) => result.document_id === d.id)?.medications.length || 0} medicines extracted` : d.ocr_status === 'failed' ? 'Digitisation needs attention' : d.ocr_status === 'processing' ? 'Clinical digitisation in progress' : 'Securely received - digitisation queued'}</span></div><button className="text-button" onClick={() => { setActiveDoc(d); setModal('docview'); }}>{t('docs.view')} <ArrowRight size={14} /></button><button className="text-button delete-btn" onClick={() => deleteDocument(d.id)}><X size={14} /> {t('docs.delete')}</button></div>)}</div>
             </section>
           )}
         </div>
@@ -521,11 +605,23 @@ export default function App() {
               <label className="input-label" style={{ marginTop: '14px' }}>{t('intake.currentMeds')}</label>
               <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder={t('intake.currentMedsPlaceholder')} value={currentMeds} onChange={(e) => setCurrentMeds(e.target.value)} />
 
+              <label className="input-label" style={{ marginTop: '14px' }}>Past medical or surgical history</label>
+              <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder="Previous conditions, admissions, or surgeries" value={pastMedicalHistory} onChange={(e) => setPastMedicalHistory(e.target.value)} />
+              <label className="input-label" style={{ marginTop: '14px' }}>Drug allergies</label>
+              <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder="Allergies or reactions to medicines" value={drugAllergies} onChange={(e) => setDrugAllergies(e.target.value)} />
+              <label className="input-label" style={{ marginTop: '14px' }}>Family history</label>
+              <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder="Relevant conditions in close family members" value={familyHistory} onChange={(e) => setFamilyHistory(e.target.value)} />
+              <label className="input-label" style={{ marginTop: '14px' }}>Personal history and lifestyle</label>
+              <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder="Diet, sleep, tobacco, alcohol, activity, or other relevant details" value={personalHistory} onChange={(e) => setPersonalHistory(e.target.value)} />
+              <label className="input-label" style={{ marginTop: '14px' }}>Other symptoms or body systems affected</label>
+              <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder="For example: fever, cough, digestion, sleep, or urinary symptoms" value={reviewOfSystems} onChange={(e) => setReviewOfSystems(e.target.value)} />
+
               <label className="input-label" style={{ marginTop: '14px' }}>{t('intake.emergencyContact')} <span className="required-asterisk">*</span></label>
               <input className={`story-input ${intakeError && !emergencyContact.trim() ? 'field-error' : ''}`} style={{ height: 'auto', padding: '10px 12px' }} placeholder={t('intake.emergencyContactPlaceholder')} value={emergencyContact} onChange={(e) => setEmergencyContact(e.target.value)} />
               {intakeError && !emergencyContact.trim() && <div className="error-msg">{t('intake.required')}</div>}
 
-              <div className="choice-row" style={{ marginTop: '14px' }}><button className={ayushMode ? 'choice-card selected' : 'choice-card'} onClick={() => setAyushMode(!ayushMode)}><HeartPulse size={17} /><span><strong>{t('intake.includeAyush')}</strong><small>{t('intake.ayushDetail')}</small></span>{ayushMode && <Check size={15} />}</button><button className={priorSurgery ? 'choice-card selected' : 'choice-card'} onClick={() => setPriorSurgery(!priorSurgery)}><ClipboardList size={17} /><span><strong>{t('intake.pastSurgery')}</strong><small>{t('intake.pastSurgeryDetail')}</small></span>{priorSurgery && <Check size={15} />}</button></div>
+              <div className="choice-row" style={{ marginTop: '14px' }}><button className={ayushMode ? 'choice-card selected' : 'choice-card'} onClick={() => setAyushMode(!ayushMode)}><HeartPulse size={17} /><span><strong>Include Ayurvedic assessment</strong><small>Optional Prakriti, Vikriti, Agni and lifestyle context</small></span>{ayushMode && <Check size={15} />}</button><button className={priorSurgery ? 'choice-card selected' : 'choice-card'} onClick={() => setPriorSurgery(!priorSurgery)}><ClipboardList size={17} /><span><strong>{t('intake.pastSurgery')}</strong><small>{t('intake.pastSurgeryDetail')}</small></span>{priorSurgery && <Check size={15} />}</button></div>
+              {ayushMode && <><label className="input-label" style={{ marginTop: '14px' }}>AYUSH assessment</label><textarea className="story-input" placeholder="Prakriti, Vikriti, appetite (Agni), bowel habits (Koshtha), diet and lifestyle (Ahara-Vihara)" value={ayushAssessment} onChange={(e) => setAyushAssessment(e.target.value)} /></>}
             </div>}
 
             {intakeStep === 2 && <div className="intake-body">
@@ -539,7 +635,7 @@ export default function App() {
                 {selectedSymptom === 'other' && <textarea className="symptom-other-input" placeholder={t('intake.otherSymptomPlaceholder')} value={otherSymptomText} onChange={(e) => setOtherSymptomText(e.target.value)} />}
               </div>
               {intakeError && !symptomSelected && <div className="error-msg" style={{ marginTop: '10px' }}>{t('intake.selectSymptom')}</div>}
-              {hasRedFlag && <div className="red-flag-notice"><AlertTriangle size={18} /><span><strong>{t('intake.redFlagNotice')}</strong> {t('intake.redFlagNoticeBody')}</span></div>}
+              {hasRedFlag && <div className="red-flag-notice"><AlertTriangle size={18} /><span><strong>Priority triage: please tell a care-team member now.</strong> This is not a diagnosis. We will attach your details to the clinician summary.<input className="story-input" style={{ height: 'auto', marginTop: 8, padding: '8px 10px' }} placeholder="When did this start? Is there breathlessness, fainting, sweating, or severe weakness?" value={redFlagDetail} onChange={(e) => setRedFlagDetail(e.target.value)} /></span></div>}
             </div>}
 
             {intakeStep === 3 && <div className="intake-body">
@@ -558,7 +654,7 @@ export default function App() {
                 <div><span>{t('intake.severity')}</span><strong>{severity ? t(`intake.${severity}`) : '-'}</strong></div>
                 <div><span>{t('intake.currentMeds')}</span><strong>{currentMeds || '-'}</strong></div>
                 <div><span>{t('intake.emergencyContact')}</span><strong>{emergencyContact || '-'}</strong></div>
-                <div><span>{t('intake.historyCaptured')}</span><strong>{t('summary.hpi')} · {t('summary.pastMed')} · {ayushMode ? t('intake.ayushContext') : t('intake.lifestyleContext')}</strong></div>
+                <div><span>{t('intake.historyCaptured')}</span><strong>{t('summary.hpi')} · {t('summary.pastMed')} · Family · Personal · Review of systems {ayushMode ? `· ${t('intake.ayushContext')}` : ''}</strong></div>
                 <div><span>{t('intake.safetyScreening')}</span><strong className={hasRedFlag ? 'warning-text' : ''}>{hasRedFlag ? t('intake.priorityFlagged') : t('intake.noUrgent')}</strong></div>
               </div>
               <label className="consent-row"><button className={intakeConsent ? 'check-box checked' : 'check-box'} onClick={() => setIntakeConsent(!intakeConsent)}>{intakeConsent && <Check size={13} />}</button><span>{t('intake.consentShare')}</span></label>
@@ -579,8 +675,11 @@ export default function App() {
             <h2>{t('upload.title')}</h2>
             <p className="modal-copy">{t('upload.body')}</p>
             <div className="category-row"><p className="input-label">{t('upload.category')}</p><div className="category-pills">{docCategories.map((c) => <button className={uploadCategory === c.key ? 'category-pill selected' : 'category-pill'} key={c.key} onClick={() => setUploadCategory(c.key)}>{t(c.labelKey)}</button>)}</div></div>
-            <button className="dropzone" onClick={doUpload} disabled={uploading || !uploadConsent}><Paperclip size={21} /><strong>{uploading ? t('upload.uploading') : t('upload.choose')}</strong><span>{t('upload.fileInfo')}</span></button>
+            <input ref={fileInputRef} hidden type="file" accept="application/pdf,.pdf" onChange={handleFileSelection} />
+            <button type="button" className="dropzone" onClick={() => fileInputRef.current?.click()} disabled={uploading}><Paperclip size={21} /><strong>{selectedFile ? selectedFile.name : t('upload.choose')}</strong><span>{selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB · PDF` : 'PDF files only'}</span></button>
+            {selectedFile && <div className="selected-file"><FileCheck2 size={15} /><span>{selectedFile.name}</span><button type="button" aria-label="Remove selected file" onClick={() => { setSelectedFile(null); setUploadMsg(''); if (fileInputRef.current) fileInputRef.current.value = ''; }}><X size={14} /></button></div>}
             <div className="modal-consent"><button className={uploadConsent ? 'check-box checked' : 'check-box'} onClick={() => setUploadConsent(!uploadConsent)}>{uploadConsent && <Check size={13} />}</button><span>{t('upload.consent')}</span></div>
+            <button type="button" className="primary-button upload-submit" onClick={doUpload} disabled={uploading || !uploadConsent || !selectedFile}>{uploading ? t('upload.uploading') : 'Submit PDF'} <ArrowRight size={16} /></button>
             {uploadMsg && <div className={`upload-msg ${uploadMsg.includes('error') ? 'error' : 'success'}`}><Check size={14} /> {uploadMsg}</div>}
           </div>
         </div>
@@ -673,6 +772,9 @@ export default function App() {
                   <div className="report-grid-item"><label>{t('report.pastHistory')}</label><span>{activeReport.past_history || '-'}</span></div>
                   <div className="report-grid-item"><label>{t('report.drugAllergy')}</label><span>{activeReport.drug_allergy || '-'}</span></div>
                   <div className="report-grid-item"><label>{t('report.personalHistory')}</label><span>{activeReport.personal_history || '-'}</span></div>
+                  <div className="report-grid-item"><label>Family history</label><span>{activeReport.family_history || '-'}</span></div>
+                  <div className="report-grid-item"><label>Review of systems</label><span>{activeReport.review_of_systems || '-'}</span></div>
+                  {activeReport.ayush_mode && <div className="report-grid-item"><label>AYUSH assessment</label><span>{activeReport.ayush_assessment || '-'}</span></div>}
                   <div className="report-grid-item"><label>{t('report.ayushMode')}</label><span>{activeReport.ayush_mode ? t('report.yes') : t('report.no')}</span></div>
                   <div className="report-grid-item"><label>{t('report.priorSurgery')}</label><span>{activeReport.prior_surgery ? t('report.yes') : t('report.no')}</span></div>
                   <div className="report-grid-item"><label>{t('report.safetyScreening')}</label><span>{activeReport.has_red_flag ? t('report.redFlag') : t('report.noRedFlag')}</span></div>
@@ -756,12 +858,13 @@ export default function App() {
               </div>
             </div>
             <div className="report-section">
-              <div className="report-section-title"><ScanLine size={15} /> {t('docview.ocrText')}</div>
-              <div className="report-section-body">{activeDoc.ocr_extracted_text || t('docview.noOcrText')}</div>
+              <div className="report-section-title"><ScanLine size={15} /> Clinical digitisation</div>
+              <div className="report-section-body">{activeDoc.ocr_extracted_text || (activeDoc.ocr_status === 'queued' ? 'Your document has been securely received and queued for OCR. Extracted medicines, diagnoses, investigations, and dated events will appear here after clinical digitisation.' : activeDoc.ocr_status === 'processing' ? 'The document is currently being digitised.' : activeDoc.ocr_status === 'failed' ? 'Digitisation could not be completed. The original PDF remains available for clinician review.' : t('docview.noOcrText'))}</div>
             </div>
+            {documentResults.find((result) => result.document_id === activeDoc.id) && <div className="report-section"><div className="report-section-title"><BadgeCheck size={15} /> Structured clinical findings</div><div className="report-grid"><div className="report-grid-item"><label>Summary</label><span>{documentResults.find((result) => result.document_id === activeDoc.id)?.summary || '-'}</span></div><div className="report-grid-item"><label>Diagnoses</label><span>{documentResults.find((result) => result.document_id === activeDoc.id)?.diagnoses.join(', ') || '-'}</span></div><div className="report-grid-item"><label>Medicines</label><span>{documentResults.find((result) => result.document_id === activeDoc.id)?.medications.map((medicine) => `${medicine.name || 'Medicine'}${medicine.dosage ? ` (${medicine.dosage})` : ''}`).join(', ') || '-'}</span></div><div className="report-grid-item"><label>Investigations</label><span>{documentResults.find((result) => result.document_id === activeDoc.id)?.investigations.map((test) => `${test.name || 'Test'}${test.value ? `: ${test.value}` : ''}`).join(', ') || '-'}</span></div></div></div>}
             <div className="report-footer">
               <span><LockKeyhole size={14} /> {t('summary.draftPrivate')}</span>
-              <button className="primary-button" onClick={() => { setModal(null); setActiveDoc(null); }}>{t('common.close')} <X size={16} /></button>
+              <div style={{ display: 'flex', gap: 8 }}><button className="back-button" onClick={() => openStoredDocument(activeDoc)}>Open PDF</button><button className="primary-button" onClick={() => { setModal(null); setActiveDoc(null); }}>{t('common.close')} <X size={16} /></button></div>
             </div>
           </div>
         </div>

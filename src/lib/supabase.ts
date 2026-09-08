@@ -39,6 +39,9 @@ export type HealthStory = {
   past_history: string;
   drug_allergy: string;
   personal_history: string;
+  family_history: string;
+  review_of_systems: string;
+  ayush_assessment: string;
   ayush_mode: boolean;
   prior_surgery: boolean;
   has_red_flag: boolean;
@@ -56,10 +59,25 @@ export type MedicalDocument = {
   filename: string;
   file_type: string;
   file_size: number;
+  storage_path: string | null;
   category: string;
   ocr_status: string;
   ocr_extracted_text: string;
   created_at: string;
+};
+
+export type DocumentIntelligenceResult = {
+  id: string;
+  document_id: string;
+  patient_id: string;
+  summary: string;
+  diagnoses: string[];
+  medications: Array<{ name?: string; dosage?: string }>;
+  investigations: Array<{ name?: string; value?: string; reference_range?: string }>;
+  procedures: string[];
+  document_date: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ConsentRecord = {
@@ -103,6 +121,9 @@ export type HealthReport = {
   past_history: string;
   drug_allergy: string;
   personal_history: string;
+  family_history: string;
+  review_of_systems: string;
+  ayush_assessment: string;
   ayush_mode: boolean;
   prior_surgery: boolean;
   has_red_flag: boolean;
