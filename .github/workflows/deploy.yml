@@ -42,6 +42,8 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      - name: Remove branch fallback from Pages artifact
+        run: node scripts/prepare-pages-artifact.mjs
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
