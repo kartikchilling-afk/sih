@@ -66,7 +66,14 @@ export default function App() {
   const [latestStory, setLatestStory] = useState<HealthStory | null>(null);
   const [activeReport, setActiveReport] = useState<HealthReport | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [isEditingReport, setIsEditingReport] = useState(false);
+  const [reportDraft, setReportDraft] = useState<Partial<HealthReport>>({});
+  const [savingReport, setSavingReport] = useState(false);
+  const [reportMsg, setReportMsg] = useState('');
   const [activeDoc, setActiveDoc] = useState<MedicalDocument | null>(null);
+  const [documentUrl, setDocumentUrl] = useState('');
+  const [documentPreviewError, setDocumentPreviewError] = useState('');
+  const [loadingDocumentPreview, setLoadingDocumentPreview] = useState(false);
 
   const [intakeStep, setIntakeStep] = useState(1);
   const [chiefConcern, setChiefConcern] = useState('');
@@ -290,7 +297,7 @@ export default function App() {
       loadDocumentResults();
     });
     logActivity('document_uploaded', selectedFile.name, t('docs.ready'), 'complete');
-    setTimeout(() => { setModal(null); setUploadMsg(''); }, 1200);
+    setTimeout(() => { setModal(null); setUploadMsg(''); setActiveSection('Documents'); }, 1200);
   };
 
   // Delete document
@@ -301,10 +308,24 @@ export default function App() {
     loadDocuments();
   };
 
-  const openStoredDocument = async (document: MedicalDocument) => {
-    if (!document.storage_path) return;
-    const { data, error } = await supabase.storage.from('medical-documents').createSignedUrl(document.storage_path, 60);
-    if (!error && data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  const openDocumentViewer = async (document: MedicalDocument) => {
+    setActiveDoc(document);
+    setDocumentUrl('');
+    setDocumentPreviewError('');
+    setLoadingDocumentPreview(true);
+    setModal('docview');
+    if (!document.storage_path) {
+      setDocumentPreviewError('This older record has no uploaded PDF attached. Upload the document again to view it here.');
+      setLoadingDocumentPreview(false);
+      return;
+    }
+    const { data, error } = await supabase.storage.from('medical-documents').createSignedUrl(document.storage_path, 60 * 10);
+    setLoadingDocumentPreview(false);
+    if (error || !data?.signedUrl) {
+      setDocumentPreviewError(`Unable to open this PDF. ${error?.message || 'Please check the document storage setup.'}`);
+      return;
+    }
+    setDocumentUrl(data.signedUrl);
   };
 
   // Validate intake step
@@ -441,6 +462,8 @@ export default function App() {
   // Open report for a health story
   const openReport = async (storyId: string) => {
     setLoadingReport(true);
+    setIsEditingReport(false);
+    setReportMsg('');
     setModal('report');
     const { data } = await supabase.from('health_reports').select('*').eq('health_story_id', storyId).maybeSingle();
     if (data) {
@@ -450,6 +473,32 @@ export default function App() {
       setActiveReport(fallback ? (fallback as HealthReport) : null);
     }
     setLoadingReport(false);
+  };
+
+  const beginReportReview = () => {
+    if (!activeReport) return;
+    setReportDraft(activeReport);
+    setReportMsg('');
+    setIsEditingReport(true);
+  };
+
+  const saveReportReview = async () => {
+    if (!activeReport) return;
+    setSavingReport(true);
+    const { data, error } = await supabase.from('health_reports').update({
+      chief_concern: reportDraft.chief_concern || '', hpi: reportDraft.hpi || '',
+      past_history: reportDraft.past_history || '', drug_allergy: reportDraft.drug_allergy || '',
+      personal_history: reportDraft.personal_history || '', family_history: reportDraft.family_history || '',
+      review_of_systems: reportDraft.review_of_systems || '', ayush_assessment: reportDraft.ayush_assessment || '',
+      diagnosis: reportDraft.diagnosis || '', prescription: reportDraft.prescription || '',
+      advice: reportDraft.advice || '', follow_up: reportDraft.follow_up || '', physician_notes: reportDraft.physician_notes || '',
+      status: 'reviewed', updated_at: new Date().toISOString(),
+    }).eq('id', activeReport.id).select().single();
+    setSavingReport(false);
+    if (error || !data) { setReportMsg(`Could not save review: ${error?.message || 'Please try again.'}`); return; }
+    setActiveReport(data as HealthReport);
+    setIsEditingReport(false);
+    setReportMsg('Clinical summary reviewed and saved.');
   };
 
   const greeting = `${t(greetingKey())}, ${patient?.name?.split(' ')[0] || 'Aarav'}`;
@@ -573,7 +622,7 @@ export default function App() {
             <section className="documents-view">
               <div className="section-heading"><div><p className="eyebrow">{t('docs.eyebrow')}</p><h2>{t('docs.title')}</h2><p className="section-copy">{t('docs.body')}</p></div><button className="primary-button small" onClick={() => setModal('upload')}><Plus size={16} /> {t('docs.add')}</button></div>
               <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}><div className="finding-card"><ScanLine size={18} /><div><strong>1. Secure intake</strong><span>PDF stored with your documented consent</span></div></div><div className="finding-card"><FileText size={18} /><div><strong>2. Clinical digitisation</strong><span>Queued documents are ready for the OCR worker</span></div></div><div className="finding-card"><BadgeCheck size={18} /><div><strong>3. Clinician review</strong><span>Verified findings appear in your summary</span></div></div></div>
-              <div className="document-grid">{documents.length === 0 ? <div className="empty-doc panel"><ScanLine size={26} /><strong>{t('docs.empty')}</strong><span>{t('docs.emptyBody')}</span><button className="text-button" onClick={() => setModal('upload')}>{t('docs.uploadFirst')} <ArrowRight size={14} /></button></div> : documents.map((d) => <div className="document-tile" key={d.id}><div className="record-icon green"><FileCheck2 size={18} /></div><div className="doc-info"><strong>{d.filename}</strong><span>{t('docs.uploaded')} {new Date(d.created_at).toLocaleDateString()} · {d.ocr_status === 'processed' ? `${documentResults.find((result) => result.document_id === d.id)?.diagnoses.length || 0} diagnoses and ${documentResults.find((result) => result.document_id === d.id)?.medications.length || 0} medicines extracted` : d.ocr_status === 'failed' ? 'Digitisation needs attention' : d.ocr_status === 'processing' ? 'Clinical digitisation in progress' : 'Securely received - digitisation queued'}</span></div><button className="text-button" onClick={() => { setActiveDoc(d); setModal('docview'); }}>{t('docs.view')} <ArrowRight size={14} /></button><button className="text-button delete-btn" onClick={() => deleteDocument(d.id)}><X size={14} /> {t('docs.delete')}</button></div>)}</div>
+              <div className="document-grid">{documents.length === 0 ? <div className="empty-doc panel"><ScanLine size={26} /><strong>{t('docs.empty')}</strong><span>{t('docs.emptyBody')}</span><button className="text-button" onClick={() => setModal('upload')}>{t('docs.uploadFirst')} <ArrowRight size={14} /></button></div> : documents.map((d) => <div className="document-tile" key={d.id}><div className="record-icon green"><FileCheck2 size={18} /></div><div className="doc-info"><strong>{d.filename}</strong><span>{t('docs.uploaded')} {new Date(d.created_at).toLocaleDateString()} · {d.ocr_status === 'processed' ? `${documentResults.find((result) => result.document_id === d.id)?.diagnoses.length || 0} diagnoses and ${documentResults.find((result) => result.document_id === d.id)?.medications.length || 0} medicines extracted` : d.ocr_status === 'failed' ? 'Digitisation needs attention' : d.ocr_status === 'processing' ? 'Clinical digitisation in progress' : 'Securely received - digitisation queued'}</span></div><button className="text-button" onClick={() => openDocumentViewer(d)}>View PDF <ArrowRight size={14} /></button><button className="text-button delete-btn" onClick={() => deleteDocument(d.id)}><X size={14} /> {t('docs.delete')}</button></div>)}</div>
             </section>
           )}
         </div>
@@ -741,7 +790,7 @@ export default function App() {
                     <h2>{activeReport.report_title}</h2>
                     <p className="report-date">{t('report.generated')} {new Date(activeReport.created_at).toLocaleDateString(lang === 'en' ? 'en-GB' : lang === 'hi' ? 'hi-IN' : 'mr-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
                   </div>
-                  <span className={`report-status-badge ${activeReport.status}`}>{t(`report.status${activeReport.status.charAt(0).toUpperCase()}${activeReport.status.slice(1)}`)}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><button className="back-button" onClick={beginReportReview}>Review & amend</button><span className={`report-status-badge ${activeReport.status}`}>{t(`report.status${activeReport.status.charAt(0).toUpperCase()}${activeReport.status.slice(1)}`)}</span></div>
                 </div>
 
                 <div className="report-patient-bar">
@@ -751,6 +800,21 @@ export default function App() {
                     <span>{patient?.age || 34} years · {patient?.gender || 'Male'} · {patient?.patient_code || 'MK-28491'}</span>
                   </div>
                 </div>
+
+                {isEditingReport && <div className="report-section" style={{ padding: 16, border: '1px solid #c8eadb', borderRadius: 12, background: '#f4faf7' }}>
+                  <div className="report-section-title"><FileSignature size={15} /> Clinician review - amend before confirming</div>
+                  <div className="form-row"><label>Chief complaint</label><textarea className="story-input" value={reportDraft.chief_concern || ''} onChange={(e) => setReportDraft({ ...reportDraft, chief_concern: e.target.value })} /></div>
+                  <div className="form-row"><label>History of present illness</label><textarea className="story-input" value={reportDraft.hpi || ''} onChange={(e) => setReportDraft({ ...reportDraft, hpi: e.target.value })} /></div>
+                  <div className="form-row-half"><div className="form-row"><label>Past medical / surgical history</label><input value={reportDraft.past_history || ''} onChange={(e) => setReportDraft({ ...reportDraft, past_history: e.target.value })} /></div><div className="form-row"><label>Drug allergies</label><input value={reportDraft.drug_allergy || ''} onChange={(e) => setReportDraft({ ...reportDraft, drug_allergy: e.target.value })} /></div></div>
+                  <div className="form-row-half"><div className="form-row"><label>Family history</label><input value={reportDraft.family_history || ''} onChange={(e) => setReportDraft({ ...reportDraft, family_history: e.target.value })} /></div><div className="form-row"><label>Personal history</label><input value={reportDraft.personal_history || ''} onChange={(e) => setReportDraft({ ...reportDraft, personal_history: e.target.value })} /></div></div>
+                  <div className="form-row"><label>Review of systems</label><input value={reportDraft.review_of_systems || ''} onChange={(e) => setReportDraft({ ...reportDraft, review_of_systems: e.target.value })} /></div>
+                  {activeReport.ayush_mode && <div className="form-row"><label>AYUSH assessment</label><textarea className="story-input" value={reportDraft.ayush_assessment || ''} onChange={(e) => setReportDraft({ ...reportDraft, ayush_assessment: e.target.value })} /></div>}
+                  <div className="form-row"><label>Diagnosis</label><input value={reportDraft.diagnosis || ''} onChange={(e) => setReportDraft({ ...reportDraft, diagnosis: e.target.value })} /></div>
+                  <div className="form-row"><label>Prescription</label><textarea className="story-input" value={reportDraft.prescription || ''} onChange={(e) => setReportDraft({ ...reportDraft, prescription: e.target.value })} /></div>
+                  <div className="form-row"><label>Advice and follow-up</label><textarea className="story-input" value={reportDraft.advice || ''} onChange={(e) => setReportDraft({ ...reportDraft, advice: e.target.value })} /></div>
+                  <div style={{ display: 'flex', gap: 10 }}><button className="primary-button" onClick={saveReportReview} disabled={savingReport}>{savingReport ? 'Saving…' : 'Save reviewed summary'} <Check size={16} /></button><button className="back-button" onClick={() => setIsEditingReport(false)}>Cancel</button></div>
+                </div>}
+                {reportMsg && <div className={`upload-msg ${reportMsg.startsWith('Could not') ? 'error' : 'success'}`}>{reportMsg}</div>}
 
                 {activeReport.has_red_flag ? (
                   <div className="report-flag"><AlertTriangle size={18} /><span><strong>{t('report.redFlag')}</strong> — {activeReport.red_flag_note}</span></div>
@@ -837,9 +901,9 @@ export default function App() {
 
       {/* Document Viewer Modal */}
       {modal === 'docview' && activeDoc && (
-        <div className="modal-backdrop" onClick={() => { setModal(null); setActiveDoc(null); }}>
+        <div className="modal-backdrop" onClick={() => { setModal(null); setActiveDoc(null); setDocumentUrl(''); }}>
           <div className="docview-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => { setModal(null); setActiveDoc(null); }}><X size={18} /></button>
+            <button className="modal-close" onClick={() => { setModal(null); setActiveDoc(null); setDocumentUrl(''); }}><X size={18} /></button>
             <div className="report-header">
               <div>
                 <p className="eyebrow">{t('docs.eyebrow')}</p>
@@ -861,10 +925,16 @@ export default function App() {
               <div className="report-section-title"><ScanLine size={15} /> Clinical digitisation</div>
               <div className="report-section-body">{activeDoc.ocr_extracted_text || (activeDoc.ocr_status === 'queued' ? 'Your document has been securely received and queued for OCR. Extracted medicines, diagnoses, investigations, and dated events will appear here after clinical digitisation.' : activeDoc.ocr_status === 'processing' ? 'The document is currently being digitised.' : activeDoc.ocr_status === 'failed' ? 'Digitisation could not be completed. The original PDF remains available for clinician review.' : t('docview.noOcrText'))}</div>
             </div>
+            <div className="report-section">
+              <div className="report-section-title"><FileText size={15} /> PDF preview</div>
+              {loadingDocumentPreview && <div className="report-section-body">Preparing your secure PDF preview…</div>}
+              {documentPreviewError && <div className="report-section-body pending">{documentPreviewError}</div>}
+              {documentUrl && <iframe title={`Preview of ${activeDoc.filename}`} src={documentUrl} style={{ width: '100%', height: 430, border: '1px solid #e1ebe7', borderRadius: 10, background: '#f8fbfa' }} />}
+            </div>
             {documentResults.find((result) => result.document_id === activeDoc.id) && <div className="report-section"><div className="report-section-title"><BadgeCheck size={15} /> Structured clinical findings</div><div className="report-grid"><div className="report-grid-item"><label>Summary</label><span>{documentResults.find((result) => result.document_id === activeDoc.id)?.summary || '-'}</span></div><div className="report-grid-item"><label>Diagnoses</label><span>{documentResults.find((result) => result.document_id === activeDoc.id)?.diagnoses.join(', ') || '-'}</span></div><div className="report-grid-item"><label>Medicines</label><span>{documentResults.find((result) => result.document_id === activeDoc.id)?.medications.map((medicine) => `${medicine.name || 'Medicine'}${medicine.dosage ? ` (${medicine.dosage})` : ''}`).join(', ') || '-'}</span></div><div className="report-grid-item"><label>Investigations</label><span>{documentResults.find((result) => result.document_id === activeDoc.id)?.investigations.map((test) => `${test.name || 'Test'}${test.value ? `: ${test.value}` : ''}`).join(', ') || '-'}</span></div></div></div>}
             <div className="report-footer">
               <span><LockKeyhole size={14} /> {t('summary.draftPrivate')}</span>
-              <div style={{ display: 'flex', gap: 8 }}><button className="back-button" onClick={() => openStoredDocument(activeDoc)}>Open PDF</button><button className="primary-button" onClick={() => { setModal(null); setActiveDoc(null); }}>{t('common.close')} <X size={16} /></button></div>
+              <div style={{ display: 'flex', gap: 8 }}><button className="back-button" disabled={!documentUrl} onClick={() => { if (documentUrl) window.open(documentUrl, '_blank', 'noopener,noreferrer'); }}>Open in new tab</button><button className="primary-button" onClick={() => { setModal(null); setActiveDoc(null); setDocumentUrl(''); }}>{t('common.close')} <X size={16} /></button></div>
             </div>
           </div>
         </div>
