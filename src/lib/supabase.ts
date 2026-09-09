@@ -18,6 +18,7 @@ browserScope.__medikioskSupabase = supabase;
 
 export type Patient = {
   id: string;
+  user_id: string;
   name: string;
   age: number;
   gender: string;
@@ -94,6 +95,7 @@ export type ConsentRecord = {
 export type ActivityLog = {
   id: string;
   patient_id: string;
+  document_id: string | null;
   activity_type: string;
   title: string;
   description: string;

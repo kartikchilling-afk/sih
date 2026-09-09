@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { User } from '@supabase/supabase-js';
 import {
   Activity, Accessibility, AlertTriangle, ArrowRight, BadgeCheck, Bell, Check, ChevronDown,
   ChevronRight, CircleHelp, ClipboardList, FileCheck2, FileSignature, FileText, HeartPulse,
@@ -53,6 +54,15 @@ function greetingKey(): string {
 
 export default function App() {
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('medikiosk-lang') as Lang) || 'en');
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authMessage, setAuthMessage] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>('Overview');
   const [modal, setModal] = useState<ModalKind>(null);
   const [isLangOpen, setLangOpen] = useState(false);
@@ -124,34 +134,63 @@ export default function App() {
     }
   }, [speech.transcript, speech.isListening]);
 
-  // Load patient
+  // Restore the signed-in user before loading any patient data.
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    (async () => {
-      const { data } = await supabase.from('patients').select('*').limit(1).maybeSingle();
-      if (data) { setPatient(data as Patient); setProfileForm(data as Patient); }
-    })();
+    if (!isSupabaseConfigured) { setAuthLoading(false); return; }
+    supabase.auth.getUser().then(({ data }) => { setUser(data.user); setAuthLoading(false); });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+    return () => listener.subscription.unsubscribe();
   }, []);
+
+  // Each auth user owns exactly one patient profile. New accounts start empty.
+  useEffect(() => {
+    if (!user) { setPatient(null); setProfileForm({}); setProfileLoading(false); return; }
+    (async () => {
+      setProfileLoading(true); setProfileError('');
+      const { data, error } = await supabase.from('patients').select('*').eq('user_id', user.id).maybeSingle();
+      if (error) { setProfileError(error.message); setProfileLoading(false); return; }
+      if (data) { setPatient(data as Patient); setProfileForm(data as Patient); setProfileLoading(false); return; }
+      const emailPrefix = user.email?.split('@')[0] || (user.is_anonymous ? 'Guest' : 'New patient');
+      const name = user.is_anonymous ? 'Guest patient' : emailPrefix;
+      const initials = name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'GP';
+      const { data: created, error: createError } = await supabase.from('patients').insert({
+        user_id: user.id, name, email: user.email || '', patient_code: `MK-${crypto.randomUUID().slice(0, 8).toUpperCase()}`, avatar_initials: initials,
+      }).select().single();
+      if (created) { setPatient(created as Patient); setProfileForm(created as Patient); }
+      if (createError) setProfileError(createError.message);
+      setProfileLoading(false);
+    })();
+  }, [user]);
 
   const patientId = patient?.id;
 
-  const logActivity = useCallback(async (type: string, title: string, description: string, status: string) => {
+  const logActivity = useCallback(async (
+    type: string,
+    title: string,
+    description: string,
+    status: string,
+    metadata: Record<string, unknown> = {},
+  ) => {
     if (!patientId) return;
+    const documentId = typeof metadata.document_id === 'string' ? metadata.document_id : null;
     await supabase.from('activity_log').insert({
-      patient_id: patientId, activity_type: type, title, description, status,
+      patient_id: patientId, activity_type: type, title, description, status, metadata, document_id: documentId,
     });
     const { data } = await supabase.from('activity_log').select('*').eq('patient_id', patientId).order('created_at', { ascending: false }).limit(10);
     if (data) setActivities(data as ActivityLog[]);
   }, [patientId]);
 
   // Load activities
-  useEffect(() => {
-    (async () => {
-      if (!patientId) return;
-      const { data } = await supabase.from('activity_log').select('*').eq('patient_id', patientId).order('created_at', { ascending: false }).limit(10);
-      if (data) setActivities(data as ActivityLog[]);
-    })();
+  const loadActivities = useCallback(async () => {
+    if (!patientId) return;
+    const { data } = await supabase.from('activity_log').select('*').eq('patient_id', patientId).order('created_at', { ascending: false }).limit(10);
+    if (data) setActivities(data as ActivityLog[]);
   }, [patientId]);
+
+  useEffect(() => { loadActivities(); }, [loadActivities]);
 
   // Load documents
   const loadDocuments = useCallback(async () => {
@@ -253,7 +292,15 @@ export default function App() {
 
   // Upload the selected PDF to Supabase Storage, then save its metadata.
   const doUpload = async () => {
-    if (!patientId || !selectedFile) {
+    if (!user) {
+      setUploadMsg('Your sign-in session has ended. Please sign in again before uploading.');
+      return;
+    }
+    if (!patientId) {
+      setUploadMsg('Your private profile is still being created. Please wait a moment and try again.');
+      return;
+    }
+    if (!selectedFile) {
       setUploadMsg('Please choose a PDF document before submitting.');
       return;
     }
@@ -269,35 +316,40 @@ export default function App() {
       return;
     }
     const safeFilename = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storagePath = `${patientId}/${crypto.randomUUID()}-${safeFilename}`;
+    const storagePath = `${user.id}/${crypto.randomUUID()}-${safeFilename}`;
     const { error: storageError } = await supabase.storage.from('medical-documents')
       .upload(storagePath, selectedFile, { contentType: 'application/pdf', upsert: false });
     if (storageError) {
       setUploading(false);
-      setUploadMsg(`Upload error: ${storageError.message}`);
+      setUploadMsg(`Could not store the PDF: ${storageError.message}`);
       return;
     }
     const { data, error } = await supabase.from('documents').insert({
       patient_id: patientId, filename: selectedFile.name, file_type: 'pdf', file_size: selectedFile.size,
       storage_path: storagePath, category: uploadCategory, ocr_status: 'queued', ocr_extracted_text: '',
     }).select().single();
-    setUploading(false);
     if (error || !data) {
       await supabase.storage.from('medical-documents').remove([storagePath]);
+      setUploading(false);
       setUploadMsg(`Upload error: ${error?.message || t('upload.error')}`);
       return;
     }
-    setUploadMsg(t('upload.success'));
+
+    await logActivity('document_uploaded', selectedFile.name, t('docs.ready'), 'complete', { document_id: data.id });
     setSelectedFile(null);
+    setUploadConsent(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
-    loadDocuments();
-    loadConsents();
-    void supabase.functions.invoke('process-document', { body: { documentId: data.id } }).then(() => {
-      loadDocuments();
-      loadDocumentResults();
-    });
-    logActivity('document_uploaded', selectedFile.name, t('docs.ready'), 'complete');
-    setTimeout(() => { setModal(null); setUploadMsg(''); setActiveSection('Documents'); }, 1200);
+    await Promise.all([loadDocuments(), loadDocumentResults(), loadConsents(), loadActivities()]);
+    setUploading(false);
+    setModal(null);
+    setUploadMsg('');
+    setActiveSection('Documents');
+
+    // OCR runs after the PDF has safely been saved. A worker failure must not
+    // make the uploaded document disappear from the library.
+    const { error: processingError } = await supabase.functions.invoke('process-document', { body: { documentId: data.id } });
+    await Promise.all([loadDocuments(), loadDocumentResults()]);
+    if (processingError) console.warn('Document was uploaded but processing could not start:', processingError.message);
   };
 
   // Delete document
@@ -306,6 +358,8 @@ export default function App() {
     if (document?.storage_path) await supabase.storage.from('medical-documents').remove([document.storage_path]);
     await supabase.from('documents').delete().eq('id', id);
     loadDocuments();
+    loadDocumentResults();
+    loadActivities();
   };
 
   const openDocumentViewer = async (document: MedicalDocument) => {
@@ -501,6 +555,57 @@ export default function App() {
     setReportMsg('Clinical summary reviewed and saved.');
   };
 
+  const submitAuthentication = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setAuthBusy(true); setAuthMessage('');
+    const result = authMode === 'login'
+      ? await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword })
+      : await supabase.auth.signUp({ email: authEmail, password: authPassword });
+    setAuthBusy(false);
+    if (result.error) { setAuthMessage(result.error.message); return; }
+    if (authMode === 'signup' && !result.data.session) setAuthMessage('Check your email to confirm your account, then sign in.');
+  };
+
+  const continueAsGuest = async () => {
+    setAuthBusy(true); setAuthMessage('');
+    const { error } = await supabase.auth.signInAnonymously();
+    setAuthBusy(false);
+    if (error) setAuthMessage(error.message);
+  };
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setPatient(null); setActivities([]); setDocuments([]); setDocumentResults([]); setConsents([]); setHealthStories([]); setLatestStory(null);
+  };
+
+  if (authLoading) return <div className="auth-page"><div className="auth-card">Loading your secure workspace…</div></div>;
+
+  if (!user) return (
+    <main className="auth-page">
+      <section className="auth-card">
+        <div className="brand auth-brand"><div className="brand-mark"><Stethoscope size={21} strokeWidth={2.4} /></div><div><strong>Medi<span>Kiosk</span></strong><small>Private patient portal</small></div></div>
+        <h1>{authMode === 'login' ? 'Welcome back' : 'Create your private workspace'}</h1>
+        <p>Every account has its own health records. New users begin with a fresh, empty profile.</p>
+        {!isSupabaseConfigured ? <div className="auth-message">Add your Supabase URL and anon key to enable secure sign-in.</div> : <>
+          <form className="auth-form" onSubmit={submitAuthentication}>
+            <label>Email<input type="email" autoComplete="email" required value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} /></label>
+            <label>Password<input type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} minLength={6} required value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} /></label>
+            <button className="primary-button" disabled={authBusy}>{authBusy ? 'Please wait…' : authMode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight size={16} /></button>
+          </form>
+          {authMessage && <div className="auth-message">{authMessage}</div>}
+          <button className="auth-link" onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setAuthMessage(''); }}>{authMode === 'login' ? 'New here? Create an account' : 'Already have an account? Sign in'}</button>
+          <div className="auth-divider"><span>or</span></div>
+          <button className="guest-button" disabled={authBusy} onClick={continueAsGuest}>Continue as guest</button>
+          <small className="auth-note">Guest data stays separate in this browser session. Create an account to keep access across devices.</small>
+        </>}
+      </section>
+    </main>
+  );
+
+  if (profileLoading) return <div className="auth-page"><div className="auth-card">Creating your private workspace…</div></div>;
+
+  if (profileError) return <main className="auth-page"><section className="auth-card"><h1>Workspace setup needs attention</h1><p>We could not create your private profile, so uploading is unavailable.</p><div className="auth-message">{profileError}</div><p>Apply the latest Supabase migrations, then sign out and sign in again.</p><button className="guest-button" onClick={signOut}>Sign out</button></section></main>;
+
   const greeting = `${t(greetingKey())}, ${patient?.name?.split(' ')[0] || 'Aarav'}`;
   const completedSteps = latestStory ? 4 : 0;
 
@@ -544,6 +649,7 @@ export default function App() {
               <button className="language-button" onClick={() => setLangOpen(!isLangOpen)}><Languages size={17} /><span>{langNames[lang]}</span><ChevronDown size={14} /></button>
               {isLangOpen && <div className="language-menu">{(Object.keys(langNames) as Lang[]).map((item) => <button key={item} onClick={() => { persistLang(item); setLangOpen(false); }}>{langNames[item]}{lang === item && <Check size={14} />}</button>)}</div>}
             </div>
+            <button className="sign-out-button" onClick={signOut}>Sign out</button>
             <button className="icon-button" aria-label={t('top.notifications')}><Bell size={19} /><i /></button>
             <div className="top-avatar">{patient?.avatar_initials || 'AS'}</div>
           </div>

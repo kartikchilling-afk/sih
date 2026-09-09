@@ -1,6 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
 :root{font-family:'DM Sans',Arial,sans-serif;color:#1a3a38;background:#f4f8f7;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}html{background:#f4f8f7}body{margin:0;min-width:320px;background:#f4f8f7}button,input,select,textarea{font:inherit}button{appearance:none}
 
+/* ===== Authentication ===== */
+.auth-page{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top right,#c9ede2 0,transparent 36%),#f4f8f7}
+.auth-card{width:min(100%,440px);background:#fff;border:1px solid #dceae5;border-radius:22px;padding:34px;box-shadow:0 20px 55px #174d4020;color:#45645d}
+.auth-brand{padding:0;margin-bottom:28px}.auth-card h1{font:800 27px Manrope,sans-serif;letter-spacing:-.8px;color:#173e3c;margin:0 0 10px}.auth-card>p{font-size:14px;line-height:1.6;margin:0 0 24px;color:#6d8881}
+.auth-form{display:grid;gap:16px}.auth-form label{display:grid;gap:7px;color:#41625b;font-size:13px;font-weight:700}.auth-form input{border:1px solid #d7e5df;border-radius:10px;padding:12px;color:#173e3c;background:#fff;outline:none}.auth-form input:focus{border-color:#0d8c78;box-shadow:0 0 0 3px #0d8c7818}.auth-form .primary-button{justify-content:center;margin-top:4px}
+.auth-message{margin:16px 0;padding:11px 13px;border-radius:10px;background:#fff6e9;color:#8a6230;font-size:13px;line-height:1.4}.auth-link,.guest-button{width:100%;border:0;background:transparent;color:#087c6e;font:600 13px 'DM Sans';cursor:pointer;padding:12px}.auth-divider{display:flex;align-items:center;gap:12px;color:#9aada8;font-size:12px;margin:6px 0}.auth-divider:before,.auth-divider:after{content:'';height:1px;background:#e3ece9;flex:1}.guest-button{border:1px solid #bfd7cf;border-radius:10px;color:#41625b}.auth-note{display:block;text-align:center;color:#8a9f99;line-height:1.45;font-size:11px;margin-top:14px}
+.sign-out-button{border:1px solid #e0ebe6;background:#fff;border-radius:10px;color:#6b827c;font:600 13px 'DM Sans';padding:9px 12px;cursor:pointer}.sign-out-button:hover{background:#f4f8f7;color:#0b7067}
+
 /* ===== App Shell ===== */
 .app-shell{min-height:100vh;display:flex;background:#f4f8f7}
 
