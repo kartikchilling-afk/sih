@@ -328,6 +328,7 @@
 .upload-modal h2{font:800 26px Manrope,sans-serif;color:#214943;margin:0;letter-spacing:-.7px}
 .modal-copy{font-size:14px;line-height:1.55;color:#809892;margin:12px 0 22px}
 .dropzone{width:100%;border:1.5px dashed #7bc3ad;background:#f4fbf8;border-radius:16px;padding:26px 20px;display:flex;flex-direction:column;align-items:center;gap:8px;color:#15866e;cursor:pointer}
+.dropzone.dragging{border-color:#0d8c78;background:#e7f7f0;box-shadow:0 0 0 3px #0d8c7820}
 .dropzone strong{font-size:14px}
 .dropzone span{font-size:12px;color:#8ca39c}
 .modal-consent{display:flex;gap:10px;align-items:flex-start;margin-top:20px;color:#819791;font-size:12px;line-height:1.45}

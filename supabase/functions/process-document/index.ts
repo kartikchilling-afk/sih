@@ -24,9 +24,10 @@ Deno.serve(async (request) => {
   await supabase.from('documents').update({ ocr_status: 'processing' }).eq('id', documentId);
   await supabase.from('document_processing_jobs').update({ status: 'processing', attempts: 1, updated_at: new Date().toISOString() }).eq('document_id', documentId);
   try {
-    const { data: pdf, error: downloadError } = await supabase.storage.from('medical-documents').download(document.storage_path);
-    if (downloadError || !pdf) throw new Error(downloadError?.message || 'Unable to download PDF');
-    const body = { documentId, patientId: document.patient_id, fileName: document.filename, mimeType: 'application/pdf', documentBase64: toBase64(new Uint8Array(await pdf.arrayBuffer())) };
+    const { data: file, error: downloadError } = await supabase.storage.from('medical-documents').download(document.storage_path);
+    if (downloadError || !file) throw new Error(downloadError?.message || 'Unable to download document');
+    const mimeType = document.file_type === 'pdf' ? 'application/pdf' : document.file_type === 'png' ? 'image/png' : 'image/jpeg';
+    const body = { documentId, patientId: document.patient_id, fileName: document.filename, mimeType, documentBase64: toBase64(new Uint8Array(await file.arrayBuffer())) };
     const ocrResponse = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: `Bearer ${key}` } : {}) }, body: JSON.stringify(body) });
     if (!ocrResponse.ok) throw new Error(`OCR provider returned ${ocrResponse.status}`);
     const result = await ocrResponse.json();

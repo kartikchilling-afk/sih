@@ -112,6 +112,7 @@ export default function App() {
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [profileForm, setProfileForm] = useState<Partial<Patient>>({});
@@ -277,20 +278,35 @@ export default function App() {
     logActivity('consent_given', t('consent.saved'), '', 'complete');
   };
 
-  const handleFileSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const selectUploadFile = (file: File | undefined) => {
     if (!file) return;
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    const supportedTypes = new Set(['pdf', 'png', 'jpg', 'jpeg']);
+    if (!extension || !supportedTypes.has(extension)) {
       setSelectedFile(null);
-      setUploadMsg('Please select a PDF document. Other file formats are not accepted.');
-      event.target.value = '';
+      setUploadMsg('Please select a PDF, PNG, JPG, or JPEG file.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setSelectedFile(null);
+      setUploadMsg('Please select a file smaller than 10 MB.');
       return;
     }
     setSelectedFile(file);
     setUploadMsg('');
   };
 
-  // Upload the selected PDF to Supabase Storage, then save its metadata.
+  const handleFileSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+    selectUploadFile(event.target.files?.[0]);
+    event.target.value = '';
+  };
+
+  const uploadFileType = (file: File) => {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    return extension === 'jpeg' ? 'jpg' : extension || 'pdf';
+  };
+
+  // Upload the selected document to Supabase Storage, then save its metadata.
   const doUpload = async () => {
     if (!user) {
       setUploadMsg('Your sign-in session has ended. Please sign in again before uploading.');
@@ -301,7 +317,7 @@ export default function App() {
       return;
     }
     if (!selectedFile) {
-      setUploadMsg('Please choose a PDF document before submitting.');
+      setUploadMsg('Please choose a PDF, PNG, or JPG document before submitting.');
       return;
     }
     setUploading(true); setUploadMsg('');
@@ -316,16 +332,17 @@ export default function App() {
       return;
     }
     const safeFilename = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fileType = uploadFileType(selectedFile);
     const storagePath = `${user.id}/${crypto.randomUUID()}-${safeFilename}`;
     const { error: storageError } = await supabase.storage.from('medical-documents')
-      .upload(storagePath, selectedFile, { contentType: 'application/pdf', upsert: false });
+      .upload(storagePath, selectedFile, { contentType: selectedFile.type || `image/${fileType}`, upsert: false });
     if (storageError) {
       setUploading(false);
-      setUploadMsg(`Could not store the PDF: ${storageError.message}`);
+      setUploadMsg(`Could not store the file: ${storageError.message}`);
       return;
     }
     const { data, error } = await supabase.from('documents').insert({
-      patient_id: patientId, filename: selectedFile.name, file_type: 'pdf', file_size: selectedFile.size,
+      patient_id: patientId, filename: selectedFile.name, file_type: fileType, file_size: selectedFile.size,
       storage_path: storagePath, category: uploadCategory, ocr_status: 'queued', ocr_extracted_text: '',
     }).select().single();
     if (error || !data) {
@@ -419,7 +436,7 @@ export default function App() {
   // Finish intake - save health story and generate report
   const finishIntake = async () => {
     if (!patientId) return;
-    const { data: storyData } = await supabase.from('health_stories').insert({
+    const { data: storyData, error: storyError } = await supabase.from('health_stories').insert({
       patient_id: patientId, chief_concern: chiefConcern,
       history_of_present_illness: `Symptom duration: ${symptomDuration}. Severity: ${severity}. Current medications: ${currentMeds || 'None reported'}.`,
       past_history: pastMedicalHistory || (priorSurgery ? 'Previous admission or surgery reported' : 'No previous admission reported'),
@@ -432,6 +449,11 @@ export default function App() {
       red_flag_note: hasRedFlag ? `${symptomLabel}${redFlagDetail ? ` - ${redFlagDetail}` : ''}` : '',
       status: hasRedFlag ? 'flagged' : 'complete', language: langNames[lang],
     }).select().single();
+
+    if (storyError || !storyData) {
+      setIntakeError(`Could not save your health story. ${storyError?.message || 'Please try again.'}`);
+      return;
+    }
 
     if (storyData) {
       const reportTitle = `${t('report.reportTitle')} - ${new Date(storyData.created_at).toLocaleDateString(lang === 'en' ? 'en-GB' : lang === 'hi' ? 'hi-IN' : 'mr-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`;
@@ -830,11 +852,11 @@ export default function App() {
             <h2>{t('upload.title')}</h2>
             <p className="modal-copy">{t('upload.body')}</p>
             <div className="category-row"><p className="input-label">{t('upload.category')}</p><div className="category-pills">{docCategories.map((c) => <button className={uploadCategory === c.key ? 'category-pill selected' : 'category-pill'} key={c.key} onClick={() => setUploadCategory(c.key)}>{t(c.labelKey)}</button>)}</div></div>
-            <input ref={fileInputRef} hidden type="file" accept="application/pdf,.pdf" onChange={handleFileSelection} />
-            <button type="button" className="dropzone" onClick={() => fileInputRef.current?.click()} disabled={uploading}><Paperclip size={21} /><strong>{selectedFile ? selectedFile.name : t('upload.choose')}</strong><span>{selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB · PDF` : 'PDF files only'}</span></button>
+            <input ref={fileInputRef} hidden type="file" accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg" onChange={handleFileSelection} />
+            <button type="button" className={`dropzone ${isDraggingFile ? 'dragging' : ''}`} onClick={() => fileInputRef.current?.click()} onDragEnter={(event) => { event.preventDefault(); setIsDraggingFile(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setIsDraggingFile(false)} onDrop={(event) => { event.preventDefault(); setIsDraggingFile(false); selectUploadFile(event.dataTransfer.files[0]); }} disabled={uploading}><Paperclip size={21} /><strong>{selectedFile ? selectedFile.name : 'Drop a file here or choose one'}</strong><span>{selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB · ${uploadFileType(selectedFile).toUpperCase()}` : 'PDF, PNG, JPG, or JPEG · up to 10 MB'}</span></button>
             {selectedFile && <div className="selected-file"><FileCheck2 size={15} /><span>{selectedFile.name}</span><button type="button" aria-label="Remove selected file" onClick={() => { setSelectedFile(null); setUploadMsg(''); if (fileInputRef.current) fileInputRef.current.value = ''; }}><X size={14} /></button></div>}
             <div className="modal-consent"><button className={uploadConsent ? 'check-box checked' : 'check-box'} onClick={() => setUploadConsent(!uploadConsent)}>{uploadConsent && <Check size={13} />}</button><span>{t('upload.consent')}</span></div>
-            <button type="button" className="primary-button upload-submit" onClick={doUpload} disabled={uploading || !uploadConsent || !selectedFile}>{uploading ? t('upload.uploading') : 'Submit PDF'} <ArrowRight size={16} /></button>
+            <button type="button" className="primary-button upload-submit" onClick={doUpload} disabled={uploading || !uploadConsent || !selectedFile}>{uploading ? t('upload.uploading') : 'Upload document'} <ArrowRight size={16} /></button>
             {uploadMsg && <div className={`upload-msg ${uploadMsg.includes('error') ? 'error' : 'success'}`}><Check size={14} /> {uploadMsg}</div>}
           </div>
         </div>
