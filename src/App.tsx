@@ -3,7 +3,7 @@ import type { User } from '@supabase/supabase-js';
 import {
   Activity, Accessibility, AlertTriangle, ArrowRight, BadgeCheck, Bell, Check, ChevronDown,
   ChevronRight, CircleHelp, ClipboardList, FileCheck2, FileSignature, FileText, HeartPulse,
-  History, Languages, LockKeyhole, MessageCircle, Mic, Paperclip, Play, Plus, ScanLine,
+  History, Languages, Leaf, LockKeyhole, MessageCircle, Mic, Paperclip, Play, Plus, ScanLine,
   ShieldCheck, Sparkles, Stethoscope, UserRound, Volume2, X,
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase, type Patient, type MedicalDocument, type DocumentIntelligenceResult, type ActivityLog, type ConsentRecord, type HealthStory, type HealthReport } from '@/lib/supabase';
@@ -58,9 +58,9 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState('');
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const [authEmail, setAuthEmail] = useState('');
-  const [authPassword, setAuthPassword] = useState('');
+  const [aadhaarNumber, setAadhaarNumber] = useState('');
+  const [aadhaarOtp, setAadhaarOtp] = useState('');
+  const [otpRequestId, setOtpRequestId] = useState('');
   const [authMessage, setAuthMessage] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>('Overview');
@@ -577,15 +577,30 @@ export default function App() {
     setReportMsg('Clinical summary reviewed and saved.');
   };
 
-  const submitAuthentication = async (event: React.FormEvent) => {
+  const requestAadhaarOtp = async (event: React.FormEvent) => {
     event.preventDefault();
+    const normalizedAadhaar = aadhaarNumber.replace(/\s/g, '');
+    if (!/^\d{12}$/.test(normalizedAadhaar)) {
+      setAuthMessage('Enter a valid 12-digit Aadhaar number.');
+      return;
+    }
     setAuthBusy(true); setAuthMessage('');
-    const result = authMode === 'login'
-      ? await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword })
-      : await supabase.auth.signUp({ email: authEmail, password: authPassword });
+    const { data, error } = await supabase.functions.invoke('aadhaar-auth', { body: { action: 'requestOtp', aadhaarNumber: normalizedAadhaar } });
     setAuthBusy(false);
-    if (result.error) { setAuthMessage(result.error.message); return; }
-    if (authMode === 'signup' && !result.data.session) setAuthMessage('Check your email to confirm your account, then sign in.');
+    if (error || !data?.requestId) { setAuthMessage(error?.message || data?.error || 'Unable to send an OTP. Please try again.'); return; }
+    setOtpRequestId(data.requestId);
+    setAuthMessage('An OTP has been sent to the mobile number registered with Aadhaar.');
+  };
+
+  const verifyAadhaarOtp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!/^\d{6}$/.test(aadhaarOtp)) { setAuthMessage('Enter the 6-digit OTP sent to your registered mobile number.'); return; }
+    setAuthBusy(true); setAuthMessage('');
+    const { data, error } = await supabase.functions.invoke('aadhaar-auth', { body: { action: 'verifyOtp', requestId: otpRequestId, otp: aadhaarOtp } });
+    if (error || !data?.session) { setAuthBusy(false); setAuthMessage(error?.message || data?.error || 'OTP verification failed. Please request a new OTP.'); return; }
+    const { error: sessionError } = await supabase.auth.setSession(data.session);
+    setAuthBusy(false);
+    if (sessionError) setAuthMessage(sessionError.message);
   };
 
   const continueAsGuest = async () => {
@@ -606,19 +621,22 @@ export default function App() {
     <main className="auth-page">
       <section className="auth-card">
         <div className="brand auth-brand"><div className="brand-mark"><Stethoscope size={21} strokeWidth={2.4} /></div><div><strong>Medi<span>Kiosk</span></strong><small>Private patient portal</small></div></div>
-        <h1>{authMode === 'login' ? 'Welcome back' : 'Create your private workspace'}</h1>
-        <p>Every account has its own health records. New users begin with a fresh, empty profile.</p>
+        <div className="auth-herb"><Leaf size={17} /> <span>Rooted in holistic care</span></div>
+        <h1>Welcome to your healing space</h1>
+        <p>Securely access your private health records with Aadhaar OTP verification.</p>
         {!isSupabaseConfigured ? <div className="auth-message">Add your Supabase URL and anon key to enable secure sign-in.</div> : <>
-          <form className="auth-form" onSubmit={submitAuthentication}>
-            <label>Email<input type="email" autoComplete="email" required value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} /></label>
-            <label>Password<input type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} minLength={6} required value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} /></label>
-            <button className="primary-button" disabled={authBusy}>{authBusy ? 'Please wait…' : authMode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight size={16} /></button>
-          </form>
+          {!otpRequestId ? <form className="auth-form" onSubmit={requestAadhaarOtp}>
+            <label>Aadhaar number<input inputMode="numeric" autoComplete="off" maxLength={14} required placeholder="XXXX XXXX XXXX" value={aadhaarNumber} onChange={(event) => setAadhaarNumber(event.target.value.replace(/\D/g, '').slice(0, 12).replace(/(.{4})/g, '$1 ').trim())} /></label>
+            <button className="primary-button" disabled={authBusy}>{authBusy ? 'Sending OTP…' : 'Send OTP'} <ArrowRight size={16} /></button>
+          </form> : <form className="auth-form" onSubmit={verifyAadhaarOtp}>
+            <label>Enter OTP<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} required placeholder="• • • • • •" value={aadhaarOtp} onChange={(event) => setAadhaarOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} /></label>
+            <button className="primary-button" disabled={authBusy}>{authBusy ? 'Verifying…' : 'Verify & continue'} <ArrowRight size={16} /></button>
+            <button type="button" className="auth-link" disabled={authBusy} onClick={() => { setOtpRequestId(''); setAadhaarOtp(''); setAuthMessage(''); }}>Use a different Aadhaar number</button>
+          </form>}
           {authMessage && <div className="auth-message">{authMessage}</div>}
-          <button className="auth-link" onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setAuthMessage(''); }}>{authMode === 'login' ? 'New here? Create an account' : 'Already have an account? Sign in'}</button>
           <div className="auth-divider"><span>or</span></div>
           <button className="guest-button" disabled={authBusy} onClick={continueAsGuest}>Continue as guest</button>
-          <small className="auth-note">Guest data stays separate in this browser session. Create an account to keep access across devices.</small>
+          <small className="auth-note"><ShieldCheck size={13} /> Aadhaar numbers are used only for OTP verification and are never stored in this portal.</small>
         </>}
       </section>
     </main>

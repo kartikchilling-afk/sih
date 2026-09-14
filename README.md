@@ -34,6 +34,22 @@ supabase secrets set OCR_SERVICE_URL=https://your-ocr-service.example.com/api/oc
 
 The OCR service receives JSON containing `documentId`, `patientId`, `fileName`, `mimeType`, and base64 document data. It should return `text`, `summary`, `diagnoses`, `medications`, `investigations`, `procedures`, and optionally `documentDate`.
 
+## Aadhaar OTP authentication
+
+The Aadhaar login screen uses the `aadhaar-auth` Edge Function. It must be connected to an authorized Aadhaar AUA/KUA provider before deployment; the browser never sends credentials to the provider directly, and the database never stores raw Aadhaar numbers or OTPs.
+
+Configure these server-side secrets with the provider-specific values, then deploy the function and apply migrations:
+
+```sh
+supabase secrets set AADHAAR_OTP_PROVIDER_URL=https://YOUR-AUTHORIZED-PROVIDER/ \
+  AADHAAR_OTP_PROVIDER_API_KEY=YOUR_PROVIDER_KEY \
+  AADHAAR_IDENTITY_HMAC_KEY=LONG_RANDOM_SERVER_SECRET
+supabase db push
+supabase functions deploy aadhaar-auth
+```
+
+The adapter expects `POST otp/request` to return `requestId` (or `transactionId`), and `POST otp/verify` to return `{ verified: true, identityReference: "stable-provider-reference" }`. Adapt those two calls if your provider uses a different contract. Do not return or persist Aadhaar numbers or OTPs.
+
 ## Checks
 
 ```sh
