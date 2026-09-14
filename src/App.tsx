@@ -63,6 +63,7 @@ export default function App() {
   const [otpRequestId, setOtpRequestId] = useState('');
   const [authMessage, setAuthMessage] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>('Overview');
   const [modal, setModal] = useState<ModalKind>(null);
   const [isLangOpen, setLangOpen] = useState(false);
@@ -127,6 +128,17 @@ export default function App() {
   const t = useCallback((key: string, params?: Record<string, string>) => translate(lang, key, params), [lang]);
 
   const persistLang = (l: Lang) => { setLang(l); localStorage.setItem('medikiosk-lang', l); };
+  const guideMessage = modal === 'intake'
+    ? `Tell me what you are feeling. You can type or use the microphone, and we will take this one step at a time.`
+    : modal === 'upload'
+      ? 'Add a prescription, lab report, or scan. I will keep it secure and ready for your care team.'
+      : modal === 'consent'
+        ? 'You are in control. Review each permission and change it whenever you need to.'
+        : activeSection === 'Documents'
+          ? 'Keep your prescriptions and reports together here. Tap any document to review it.'
+          : activeSection === 'Clinical summary'
+            ? 'Your clinical summary brings together the details you have shared so far.'
+            : 'Namaste. Start your health story whenever you are ready—I will guide you through each step.';
 
   // Sync speech transcript into chiefConcern when listening
   useEffect(() => {
@@ -624,6 +636,7 @@ export default function App() {
         <div className="auth-herb"><Leaf size={17} /> <span>Rooted in holistic care</span></div>
         <h1>Welcome to your healing space</h1>
         <p>Securely access your private health records with Aadhaar OTP verification.</p>
+        <div className="login-guide"><div className="guide-avatar" aria-hidden="true"><Leaf size={22} /><i /></div><span>Namaste. Enter your Aadhaar number to receive an OTP on its registered mobile number.</span></div>
         {!isSupabaseConfigured ? <div className="auth-message">Add your Supabase URL and anon key to enable secure sign-in.</div> : <>
           {!otpRequestId ? <form className="auth-form" onSubmit={requestAadhaarOtp}>
             <label>Aadhaar number<input inputMode="numeric" autoComplete="off" maxLength={14} required placeholder="XXXX XXXX XXXX" value={aadhaarNumber} onChange={(event) => setAadhaarNumber(event.target.value.replace(/\D/g, '').slice(0, 12).replace(/(.{4})/g, '$1 ').trim())} /></label>
@@ -1087,6 +1100,10 @@ export default function App() {
           </div>
         </div>
       )}
+      <div className="care-guide">
+        {guideOpen && <div className="care-guide-card" role="status"><strong><Leaf size={15} /> Veda, your care guide</strong><p>{guideMessage}</p></div>}
+        <button className="care-guide-button" type="button" aria-label="Open care guide" aria-expanded={guideOpen} onClick={() => setGuideOpen(!guideOpen)}><span className="guide-avatar"><Leaf size={22} /><i /></span><span>Need help?</span></button>
+      </div>
     </div>
   );
 }
