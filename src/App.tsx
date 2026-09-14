@@ -386,14 +386,14 @@ export default function App() {
     setLoadingDocumentPreview(true);
     setModal('docview');
     if (!document.storage_path) {
-      setDocumentPreviewError('This older record has no uploaded PDF attached. Upload the document again to view it here.');
+      setDocumentPreviewError('This older record has no uploaded file attached. Upload the document again to view it here.');
       setLoadingDocumentPreview(false);
       return;
     }
     const { data, error } = await supabase.storage.from('medical-documents').createSignedUrl(document.storage_path, 60 * 10);
     setLoadingDocumentPreview(false);
     if (error || !data?.signedUrl) {
-      setDocumentPreviewError(`Unable to open this PDF. ${error?.message || 'Please check the document storage setup.'}`);
+      setDocumentPreviewError(`Unable to open this document. ${error?.message || 'Please check the document storage setup.'}`);
       return;
     }
     setDocumentUrl(data.signedUrl);
@@ -750,7 +750,7 @@ export default function App() {
             <section className="documents-view">
               <div className="section-heading"><div><p className="eyebrow">{t('docs.eyebrow')}</p><h2>{t('docs.title')}</h2><p className="section-copy">{t('docs.body')}</p></div><button className="primary-button small" onClick={() => setModal('upload')}><Plus size={16} /> {t('docs.add')}</button></div>
               <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}><div className="finding-card"><ScanLine size={18} /><div><strong>1. Secure intake</strong><span>PDF stored with your documented consent</span></div></div><div className="finding-card"><FileText size={18} /><div><strong>2. Clinical digitisation</strong><span>Queued documents are ready for the OCR worker</span></div></div><div className="finding-card"><BadgeCheck size={18} /><div><strong>3. Clinician review</strong><span>Verified findings appear in your summary</span></div></div></div>
-              <div className="document-grid">{documents.length === 0 ? <div className="empty-doc panel"><ScanLine size={26} /><strong>{t('docs.empty')}</strong><span>{t('docs.emptyBody')}</span><button className="text-button" onClick={() => setModal('upload')}>{t('docs.uploadFirst')} <ArrowRight size={14} /></button></div> : documents.map((d) => <div className="document-tile" key={d.id}><div className="record-icon green"><FileCheck2 size={18} /></div><div className="doc-info"><strong>{d.filename}</strong><span>{t('docs.uploaded')} {new Date(d.created_at).toLocaleDateString()} · {d.ocr_status === 'processed' ? `${documentResults.find((result) => result.document_id === d.id)?.diagnoses.length || 0} diagnoses and ${documentResults.find((result) => result.document_id === d.id)?.medications.length || 0} medicines extracted` : d.ocr_status === 'failed' ? 'Digitisation needs attention' : d.ocr_status === 'processing' ? 'Clinical digitisation in progress' : 'Securely received - digitisation queued'}</span></div><button className="text-button" onClick={() => openDocumentViewer(d)}>View PDF <ArrowRight size={14} /></button><button className="text-button delete-btn" onClick={() => deleteDocument(d.id)}><X size={14} /> {t('docs.delete')}</button></div>)}</div>
+              <div className="document-grid">{documents.length === 0 ? <div className="empty-doc panel"><ScanLine size={26} /><strong>{t('docs.empty')}</strong><span>{t('docs.emptyBody')}</span><button className="text-button" onClick={() => setModal('upload')}>{t('docs.uploadFirst')} <ArrowRight size={14} /></button></div> : documents.map((d) => <div className="document-tile" key={d.id}><div className="record-icon green"><FileCheck2 size={18} /></div><div className="doc-info"><strong>{d.filename}</strong><span>{t('docs.uploaded')} {new Date(d.created_at).toLocaleDateString()} · {d.ocr_status === 'processed' ? `${documentResults.find((result) => result.document_id === d.id)?.diagnoses.length || 0} diagnoses and ${documentResults.find((result) => result.document_id === d.id)?.medications.length || 0} medicines extracted` : d.ocr_status === 'failed' ? 'Digitisation needs attention' : d.ocr_status === 'processing' ? 'Clinical digitisation in progress' : 'Securely received - digitisation queued'}</span></div><button className="text-button" onClick={() => openDocumentViewer(d)}>View {['jpg', 'jpeg', 'png'].includes(d.file_type.toLowerCase()) ? 'image' : 'PDF'} <ArrowRight size={14} /></button><button className="text-button delete-btn" onClick={() => deleteDocument(d.id)}><X size={14} /> {t('docs.delete')}</button></div>)}</div>
             </section>
           )}
         </div>
@@ -1054,10 +1054,12 @@ export default function App() {
               <div className="report-section-body">{activeDoc.ocr_extracted_text || (activeDoc.ocr_status === 'queued' ? 'Your document has been securely received and queued for OCR. Extracted medicines, diagnoses, investigations, and dated events will appear here after clinical digitisation.' : activeDoc.ocr_status === 'processing' ? 'The document is currently being digitised.' : activeDoc.ocr_status === 'failed' ? 'Digitisation could not be completed. The original PDF remains available for clinician review.' : t('docview.noOcrText'))}</div>
             </div>
             <div className="report-section">
-              <div className="report-section-title"><FileText size={15} /> PDF preview</div>
-              {loadingDocumentPreview && <div className="report-section-body">Preparing your secure PDF preview…</div>}
+              <div className="report-section-title"><FileText size={15} /> {['jpg', 'jpeg', 'png'].includes(activeDoc.file_type.toLowerCase()) ? 'Image preview' : 'PDF preview'}</div>
+              {loadingDocumentPreview && <div className="report-section-body">Preparing your secure document preview…</div>}
               {documentPreviewError && <div className="report-section-body pending">{documentPreviewError}</div>}
-              {documentUrl && <iframe title={`Preview of ${activeDoc.filename}`} src={documentUrl} style={{ width: '100%', height: 430, border: '1px solid #e1ebe7', borderRadius: 10, background: '#f8fbfa' }} />}
+              {documentUrl && (['jpg', 'jpeg', 'png'].includes(activeDoc.file_type.toLowerCase())
+                ? <div style={{ width: '100%', height: 430, display: 'grid', placeItems: 'center', overflow: 'auto', border: '1px solid #e1ebe7', borderRadius: 10, background: '#f8fbfa' }}><img alt={`Preview of ${activeDoc.filename}`} src={documentUrl} style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain', imageRendering: 'auto' }} /></div>
+                : <iframe title={`Preview of ${activeDoc.filename}`} src={documentUrl} style={{ width: '100%', height: 430, border: '1px solid #e1ebe7', borderRadius: 10, background: '#f8fbfa' }} />)}
             </div>
             {documentResults.find((result) => result.document_id === activeDoc.id) && <div className="report-section"><div className="report-section-title"><BadgeCheck size={15} /> Structured clinical findings</div><div className="report-grid"><div className="report-grid-item"><label>Summary</label><span>{documentResults.find((result) => result.document_id === activeDoc.id)?.summary || '-'}</span></div><div className="report-grid-item"><label>Diagnoses</label><span>{documentResults.find((result) => result.document_id === activeDoc.id)?.diagnoses.join(', ') || '-'}</span></div><div className="report-grid-item"><label>Medicines</label><span>{documentResults.find((result) => result.document_id === activeDoc.id)?.medications.map((medicine) => `${medicine.name || 'Medicine'}${medicine.dosage ? ` (${medicine.dosage})` : ''}`).join(', ') || '-'}</span></div><div className="report-grid-item"><label>Investigations</label><span>{documentResults.find((result) => result.document_id === activeDoc.id)?.investigations.map((test) => `${test.name || 'Test'}${test.value ? `: ${test.value}` : ''}`).join(', ') || '-'}</span></div></div></div>}
             <div className="report-footer">
