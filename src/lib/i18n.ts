@@ -201,7 +201,7 @@ const en: Dict = {
   'intake.continue': 'Continue',
   'intake.buildSummary': 'Build my summary',
   'intake.finish': 'Finish & save',
-  'intake.allopathicQuestionnaire': 'Allopathic health questionnaire',
+  'intake.allopathicQuestionnaire': 'Ayurvedic health questionnaire',
 
   // Upload modal
   'upload.eyebrow': 'ADD TO YOUR RECORD',
@@ -519,7 +519,7 @@ const hi: Dict = {
   'intake.continue': 'जारी रखें',
   'intake.buildSummary': 'मेरा सारांश बनाएं',
   'intake.finish': 'समाप्त करें और सहेजें',
-  'intake.allopathicQuestionnaire': 'एलोपैथिक स्वास्थ्य प्रश्नावली',
+  'intake.allopathicQuestionnaire': 'आयुर्वेदिक स्वास्थ्य प्रश्नावली',
 
   'upload.eyebrow': 'अपने रिकॉर्ड में जोड़ें',
   'upload.title': 'चिकित्सा दस्तावेज़ अपलोड करें',
@@ -833,7 +833,7 @@ const mr: Dict = {
   'intake.continue': 'सुरू ठेवा',
   'intake.buildSummary': 'माझा सारांश बनवा',
   'intake.finish': 'पूर्ण करा आणि सेव्ह करा',
-  'intake.allopathicQuestionnaire': 'अॅलोपॅथिक आरोग्य प्रश्नावली',
+  'intake.allopathicQuestionnaire': 'आयुर्वेदिक आरोग्य प्रश्नावली',
 
   'upload.eyebrow': 'तुमच्या नोंदीत जोडा',
   'upload.title': 'वैद्यकीय दस्तावेज अपलोड करा',

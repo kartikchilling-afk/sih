@@ -175,7 +175,15 @@ export default function App() {
 
   // Each auth user owns exactly one patient profile. New accounts start empty.
   useEffect(() => {
-    if (!user) { setPatient(null); setProfileForm({}); setProfileLoading(false); return; }
+    setPatient(null);
+    setProfileForm({});
+    setActivities([]);
+    setDocuments([]);
+    setDocumentResults([]);
+    setConsents([]);
+    setHealthStories([]);
+    setLatestStory(null);
+    if (!user) { setProfileLoading(false); return; }
     (async () => {
       setProfileLoading(true); setProfileError('');
       const { data, error } = await supabase.from('patients').select('*').eq('user_id', user.id).maybeSingle();
@@ -213,52 +221,50 @@ export default function App() {
 
   // Load activities
   const loadActivities = useCallback(async () => {
-    if (!patientId) return;
+    if (!patientId) { setActivities([]); return; }
     const { data } = await supabase.from('activity_log').select('*').eq('patient_id', patientId).order('created_at', { ascending: false }).limit(10);
-    if (data) setActivities(data as ActivityLog[]);
+    setActivities((data || []) as ActivityLog[]);
   }, [patientId]);
 
   useEffect(() => { loadActivities(); }, [loadActivities]);
 
   // Load documents
   const loadDocuments = useCallback(async () => {
-    if (!patientId) return;
+    if (!patientId) { setDocuments([]); return; }
     const { data } = await supabase.from('documents').select('*').eq('patient_id', patientId).order('created_at', { ascending: false });
-    if (data) setDocuments(data as MedicalDocument[]);
+    setDocuments((data || []) as MedicalDocument[]);
   }, [patientId]);
 
   useEffect(() => { loadDocuments(); }, [loadDocuments]);
 
   const loadDocumentResults = useCallback(async () => {
-    if (!patientId) return;
+    if (!patientId) { setDocumentResults([]); return; }
     const { data } = await supabase.from('document_intelligence_results').select('*').eq('patient_id', patientId).order('updated_at', { ascending: false });
-    if (data) setDocumentResults(data as DocumentIntelligenceResult[]);
+    setDocumentResults((data || []) as DocumentIntelligenceResult[]);
   }, [patientId]);
 
   useEffect(() => { loadDocumentResults(); }, [loadDocumentResults]);
 
   // Load consents
   const loadConsents = useCallback(async () => {
-    if (!patientId) return;
+    if (!patientId) { setConsents([]); setConsentForm({}); return; }
     const { data } = await supabase.from('consent_records').select('*').eq('patient_id', patientId);
-    if (data) {
-      setConsents(data as ConsentRecord[]);
-      const map: Record<string, boolean> = {};
-      (data as ConsentRecord[]).forEach((c) => { map[c.consent_type] = c.granted; });
-      setConsentForm(map);
-    }
+    const records = (data || []) as ConsentRecord[];
+    setConsents(records);
+    const map: Record<string, boolean> = {};
+    records.forEach((c) => { map[c.consent_type] = c.granted; });
+    setConsentForm(map);
   }, [patientId]);
 
   useEffect(() => { loadConsents(); }, [loadConsents]);
 
   // Load health stories
   const loadStories = useCallback(async () => {
-    if (!patientId) return;
+    if (!patientId) { setHealthStories([]); setLatestStory(null); return; }
     const { data } = await supabase.from('health_stories').select('*').eq('patient_id', patientId).order('created_at', { ascending: false });
-    if (data) {
-      setHealthStories(data as HealthStory[]);
-      setLatestStory((data as HealthStory[])[0] || null);
-    }
+    const stories = (data || []) as HealthStory[];
+    setHealthStories(stories);
+    setLatestStory(stories[0] || null);
   }, [patientId]);
 
   useEffect(() => { loadStories(); }, [loadStories]);
@@ -467,8 +473,8 @@ export default function App() {
     .filter(Boolean)
     .join('\n\n');
   const symptomLabel = selectedSymptom === 'chestPain' ? (isAyurvedicPath ? 'Severe pain or discomfort' : t('intake.chestPain')) : selectedSymptom === 'breathing' ? (isAyurvedicPath ? 'Digestion or appetite' : t('intake.breathing')) : selectedSymptom === 'weakness' ? (isAyurvedicPath ? 'Sleep, stress, or low energy' : t('intake.weakness')) : selectedSymptom === 'other' ? (otherSymptomText || t('intake.otherSymptom')) : '';
-  const pathTitle = isAyurvedicPath ? 'Ayurvedic health story' : 'Allopathic health story';
-  const concernLabel = isAyurvedicPath ? 'What would you like Ayurvedic support with?' : t('intake.whatBrings');
+  const pathTitle = isAyurvedicPath ? 'Allopathic health story' : 'Ayurvedic health story';
+  const concernLabel = isAyurvedicPath ? 'What would you like Allopathic support with?' : t('intake.whatBrings');
   const concernPlaceholder = isAyurvedicPath
     ? 'For example: digestion, sleep, stress, pain, skin, energy, or a current concern'
     : t('intake.placeholder');
@@ -851,12 +857,12 @@ export default function App() {
             <div id="care-path-options" className="carepath-options">
               <button type="button" className="carepath-option allopathic" onClick={() => startIntake('allopathic')}>
                 <span className="carepath-icon"><Stethoscope size={23} /></span>
-                <span><strong>Allopathic care</strong><small>Share symptoms, medicines, history, and records for modern clinical care.</small></span>
+                <span><strong>Ayurvedic care</strong><small>Share symptoms, medicines, history, and records for modern clinical care.</small></span>
                 <ArrowRight size={18} />
               </button>
               <button type="button" className="carepath-option ayurvedic" onClick={() => startIntake('ayurvedic')}>
                 <span className="carepath-icon"><Leaf size={23} /></span>
-                <span><strong>Ayurvedic care</strong><small>Follow the same flow with added Prakriti, Agni, diet, and lifestyle context.</small></span>
+                <span><strong>Allopathic care</strong><small>Follow the same flow with added Prakriti, Agni, diet, and lifestyle context.</small></span>
                 <ArrowRight size={18} />
               </button>
             </div>
@@ -889,7 +895,7 @@ export default function App() {
               <div className="severity-row">{severityOptions.map((opt) => <button key={opt.key} className={severity === opt.key ? 'severity-pill selected' : 'severity-pill'} onClick={() => setSeverity(opt.key)}>{t(opt.labelKey)}</button>)}</div>
               {intakeError && !severity && <div className="error-msg">{t('intake.required')}</div>}
 
-              <label className="input-label" style={{ marginTop: '14px' }}>{isAyurvedicPath ? 'Current medicines or Ayurvedic remedies' : t('intake.currentMeds')}</label>
+              <label className="input-label" style={{ marginTop: '14px' }}>{isAyurvedicPath ? 'Current medicines or Allopathic remedies' : t('intake.currentMeds')}</label>
               <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder={isAyurvedicPath ? 'Any medicines, herbs, supplements, or therapies you use' : t('intake.currentMedsPlaceholder')} value={currentMeds} onChange={(e) => setCurrentMeds(e.target.value)} />
 
               <label className="input-label" style={{ marginTop: '14px' }}>Past medical or surgical history</label>
