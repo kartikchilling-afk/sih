@@ -192,9 +192,9 @@ export default function App() {
       const emailPrefix = user.email?.split('@')[0] || (user.is_anonymous ? 'Guest' : 'New patient');
       const name = user.is_anonymous ? 'Guest patient' : emailPrefix;
       const initials = name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'GP';
-      const { data: created, error: createError } = await supabase.from('patients').insert({
+      const { data: created, error: createError } = await supabase.from('patients').upsert({
         user_id: user.id, name, email: user.email || '', patient_code: `MK-${crypto.randomUUID().slice(0, 8).toUpperCase()}`, avatar_initials: initials,
-      }).select().single();
+      }, { onConflict: 'user_id' }).select().single();
       if (created) { setPatient(created as Patient); setProfileForm(created as Patient); }
       if (createError) setProfileError(createError.message);
       setProfileLoading(false);

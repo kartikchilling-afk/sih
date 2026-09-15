@@ -69,7 +69,10 @@ function speakVeda(text: string, lang: Language) {
   if (!('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel(); 
 
-  setTimeout(() => {
+  let spoken = false;
+  const speak = () => {
+    if (spoken) return;
+    spoken = true;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 0.90; 
     utterance.pitch = 1.05; 
@@ -88,7 +91,14 @@ function speakVeda(text: string, lang: Language) {
     }
 
     window.speechSynthesis.speak(utterance);
-  }, 50);
+  };
+
+  if (window.speechSynthesis.getVoices().length > 0) {
+    speak();
+  } else {
+    window.speechSynthesis.addEventListener('voiceschanged', speak, { once: true });
+    setTimeout(speak, 250);
+  }
 }
 
 export function VedaAssistant({ 
