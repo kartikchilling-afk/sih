@@ -135,8 +135,20 @@ export type HealthReport = {
   prescription: string;
   advice: string;
   follow_up: string;
+  ai_review: AiClinicalReview | null;
   status: string;
   language: string;
   created_at: string;
   updated_at: string;
+};
+
+export type AiClinicalReview = {
+  source_document_count: number;
+  patient_summary: string;
+  pdf_findings: string[];
+  urgent_flags: string[];
+  clinician_questions: string[];
+  medication_considerations: string[];
+  safety_note: string;
+  generated_at: string;
 };

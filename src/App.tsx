@@ -9,6 +9,7 @@ import {
 import { isSupabaseConfigured, supabase, type Patient, type MedicalDocument, type DocumentIntelligenceResult, type ActivityLog, type ConsentRecord, type HealthStory, type HealthReport } from '@/lib/supabase';
 import { translate, langNames, type Lang } from '@/lib/i18n';
 import { useSpeech } from '@/lib/useSpeech';
+import { VedaAssistant } from '@/components/VedaAssistant';
 
 type Section = 'Overview' | 'Clinical summary' | 'My history' | 'Documents';
 type ModalKind = 'carepath' | 'intake' | 'upload' | 'profile' | 'consent' | 'report' | 'howitworks' | 'docview' | null;
@@ -45,6 +46,27 @@ const severityOptions: Array<{ key: string; labelKey: string }> = [
   { key: 'severe', labelKey: 'intake.severe' },
 ];
 
+const allopathicHealthQuestions: Record<Lang, Array<{ title: string; question: string; placeholder: string }>> = {
+  en: [
+    ['Prakriti (Natural body type)', 'How would you describe your natural build, climate sensitivity, and skin type?', 'For example: medium build, sensitive to heat, dry skin'],
+    ['Vikriti (Current imbalance)', 'What is your main concern, when did it start, and how much does it affect daily life?', 'Describe the concern, duration, and severity'],
+    ['Sara (Tissue quality & immunity)', 'Do wounds heal quickly? Do you have joint concerns, brittle nails, or frequent seasonal infections?', 'Share healing, joints, and immunity details'],
+    ['Samhanana (Body compactness)', 'How firm are your muscles and joints, and have you noticed any body asymmetry?', 'Firm, average, or loose; note any asymmetry'],
+    ['Pramana (Body measurements)', 'Please share your height, weight, waist circumference, and any recent unexplained weight change.', 'Height, weight, waist, and recent weight shift'],
+    ['Satmya (Habits & suitability)', 'What is your diet preference, daily tea/coffee/alcohol intake, and any food or medicine allergies?', 'Diet, daily intake, and allergies'],
+    ['Satva (Mental strength)', 'How do you handle sudden stress, and how well do you tolerate physical pain?', 'Calm, anxious, overwhelmed; high, average, or low tolerance'],
+    ['Ahara Shakti (Digestive capacity)', 'How are your appetite, digestion after meals, and bowel regularity?', 'Appetite, bloating/heartburn/heaviness, and bowel habits'],
+    ['Vyayama Shakti (Physical endurance)', 'What exercise do you do, and how quickly do you become tired or breathless?', 'Activity type, duration, fatigue, or breathlessness'],
+    ['Vaya (Age factor)', 'Please enter your exact date of birth to help identify your biological life stage.', 'DD/MM/YYYY'],
+  ].map(([title, question, placeholder], index) => ({ title: `${index + 1}. ${title}`, question, placeholder })),
+  hi: [
+    ['प्रकृति (शारीरिक स्वभाव)', 'अपनी प्राकृतिक शारीरिक बनावट, मौसम के प्रति संवेदनशीलता और त्वचा के प्रकार के बारे में बताएं।', 'जैसे: मध्यम बनावट, गर्मी से परेशानी, रूखी त्वचा'], ['विकृति (वर्तमान असंतुलन)', 'आपकी मुख्य समस्या क्या है, यह कब शुरू हुई और दैनिक जीवन को कितना प्रभावित करती है?', 'समस्या, अवधि और गंभीरता बताएं'], ['सार (ऊतक गुणवत्ता व प्रतिरक्षा)', 'क्या घाव जल्दी भरते हैं? क्या जोड़ों की समस्या, भंगुर नाखून या बार-बार संक्रमण होता है?', 'घाव भरने, जोड़ों और प्रतिरक्षा की जानकारी'], ['संहनन (शरीर की सघनता)', 'मांसपेशियां और जोड़ कितने मजबूत हैं, और क्या शरीर में कोई असमानता दिखती है?', 'मजबूत, सामान्य या ढीले; असमानता लिखें'], ['प्रमाण (शरीर माप)', 'अपनी लंबाई, वजन, कमर का माप और हाल का बिना कारण वजन बदलाव बताएं।', 'लंबाई, वजन, कमर और वजन में बदलाव'], ['सात्म्य (आदतें व अनुकूलता)', 'आपका आहार, चाय/कॉफी/अल्कोहल का दैनिक सेवन और भोजन या दवा से एलर्जी क्या है?', 'आहार, दैनिक सेवन और एलर्जी'], ['सत्व (मानसिक शक्ति)', 'अचानक तनाव को आप कैसे संभालते हैं और शारीरिक दर्द कितना सह पाते हैं?', 'शांत, चिंतित या अभिभूत; सहनशीलता'], ['आहार शक्ति (पाचन क्षमता)', 'आपकी भूख, भोजन के बाद पाचन और मल की नियमितता कैसी है?', 'भूख, गैस/जलन/भारीपन और मल की आदत'], ['व्यायाम शक्ति (शारीरिक सहनशक्ति)', 'आप कौन सा व्यायाम करते हैं और कितनी जल्दी थकान या सांस फूलती है?', 'गतिविधि, समय, थकान या सांस फूलना'], ['वय (आयु कारक)', 'कृपया अपनी जन्मतिथि दर्ज करें ताकि जीवन अवस्था पहचानी जा सके।', 'दिन/माह/वर्ष'],
+  ].map(([title, question, placeholder], index) => ({ title: `${index + 1}. ${title}`, question, placeholder })),
+  mr: [
+    ['प्रकृती (नैसर्गिक शरीरप्रकार)', 'तुमची नैसर्गिक शरीरयष्टी, हवामान संवेदनशीलता आणि त्वचेचा प्रकार सांगा.', 'उदा.: मध्यम बांधा, उष्णतेचा त्रास, कोरडी त्वचा'], ['विकृती (सध्याचे असंतुलन)', 'तुमची मुख्य तक्रार काय आहे, ती कधी सुरू झाली आणि दैनंदिन जीवनावर किती परिणाम होतो?', 'तक्रार, कालावधी आणि तीव्रता सांगा'], ['सार (ऊतींची गुणवत्ता व प्रतिकारशक्ती)', 'जखमा लवकर भरतात का? सांधे, ठिसूळ नखे किंवा वारंवार संक्रमणाची समस्या आहे का?', 'जखम, सांधे आणि प्रतिकारशक्तीविषयी माहिती'], ['संहनन (शरीराची सघनता)', 'स्नायू व सांधे किती मजबूत आहेत आणि शरीरात असममितता दिसते का?', 'मजबूत, सरासरी किंवा सैल; असममितता नोंदवा'], ['प्रमाण (शरीरमाप)', 'तुमची उंची, वजन, कंबरेचा घेर आणि अलीकडील अनपेक्षित वजनबदल सांगा.', 'उंची, वजन, कंबर आणि वजनबदल'], ['सातम्य (सवयी व अनुकूलता)', 'तुमचा आहार, चहा/कॉफी/मद्याचे दैनिक सेवन आणि अन्न किंवा औषधांची अॅलर्जी सांगा.', 'आहार, दैनिक सेवन आणि अॅलर्जी'], ['सत्व (मानसिक ताकद)', 'अचानक तणाव कसा हाताळता आणि शारीरिक वेदना किती सहन होतात?', 'शांत, चिंताग्रस्त किंवा भारावलेले; सहनशीलता'], ['आहार शक्ती (पचन क्षमता)', 'तुमची भूक, जेवणानंतरचे पचन आणि शौचाची नियमितता कशी आहे?', 'भूक, गॅस/जळजळ/जडपणा आणि शौचाची सवय'], ['व्यायाम शक्ती (शारीरिक सहनशक्ती)', 'तुम्ही कोणता व्यायाम करता आणि किती लवकर थकवा किंवा धाप लागते?', 'क्रिया, वेळ, थकवा किंवा धाप'], ['वय (वयाचा घटक)', 'तुमची जीवन अवस्था समजण्यासाठी अचूक जन्मतारीख नोंदवा.', 'दिन/महिना/वर्ष'],
+  ].map(([title, question, placeholder], index) => ({ title: `${index + 1}. ${title}`, question, placeholder })),
+};
+
 function greetingKey(): string {
   const h = new Date().getHours();
   if (h < 12) return 'welcome.greetingMorning';
@@ -63,7 +85,6 @@ export default function App() {
   const [otpRequestId, setOtpRequestId] = useState('');
   const [authMessage, setAuthMessage] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>('Overview');
   const [modal, setModal] = useState<ModalKind>(null);
   const [isLangOpen, setLangOpen] = useState(false);
@@ -81,6 +102,7 @@ export default function App() {
   const [reportDraft, setReportDraft] = useState<Partial<HealthReport>>({});
   const [savingReport, setSavingReport] = useState(false);
   const [reportMsg, setReportMsg] = useState('');
+  const [generatingAiReview, setGeneratingAiReview] = useState(false);
   const [activeDoc, setActiveDoc] = useState<MedicalDocument | null>(null);
   const [documentUrl, setDocumentUrl] = useState('');
   const [documentPreviewError, setDocumentPreviewError] = useState('');
@@ -97,9 +119,8 @@ export default function App() {
   const [familyHistory, setFamilyHistory] = useState('');
   const [personalHistory, setPersonalHistory] = useState('');
   const [reviewOfSystems, setReviewOfSystems] = useState('');
-  const [ayushAssessment, setAyushAssessment] = useState('');
+  const [allopathicAnswers, setAllopathicAnswers] = useState<string[]>(Array(10).fill(''));
   const [emergencyContact, setEmergencyContact] = useState('');
-  const [ayushMode, setAyushMode] = useState(false);
   const [priorSurgery, setPriorSurgery] = useState(false);
   const [hasRedFlag, setHasRedFlag] = useState(false);
   const [redFlagDetail, setRedFlagDetail] = useState('');
@@ -129,26 +150,17 @@ export default function App() {
   const t = useCallback((key: string, params?: Record<string, string>) => translate(lang, key, params), [lang]);
 
   const persistLang = (l: Lang) => { setLang(l); localStorage.setItem('medikiosk-lang', l); };
-  const guideMessage = modal === 'carepath'
-    ? 'Choose allopathic or Ayurvedic care. Both options keep your health story private and follow the same guided steps.'
-    : modal === 'intake'
-    ? `Tell me what you are feeling. You can type or use the microphone, and we will take this one step at a time.`
-    : modal === 'upload'
-      ? 'Add a prescription, lab report, or scan. I will keep it secure and ready for your care team.'
-      : modal === 'consent'
-        ? 'You are in control. Review each permission and change it whenever you need to.'
-        : activeSection === 'Documents'
-          ? 'Keep your prescriptions and reports together here. Tap any document to review it.'
-          : activeSection === 'Clinical summary'
-            ? 'Your clinical summary brings together the details you have shared so far.'
-            : 'Namaste. Start your health story whenever you are ready—I will guide you through each step.';
 
   // Sync speech transcript into chiefConcern when listening
   useEffect(() => {
     if (speech.isListening && speech.transcript) {
-      setChiefConcern(speech.transcript);
+      if (carePath === 'allopathic') {
+        setAllopathicAnswers((answers) => [speech.transcript, ...answers.slice(1)]);
+      } else {
+        setChiefConcern(speech.transcript);
+      }
     }
-  }, [speech.transcript, speech.isListening]);
+  }, [carePath, speech.transcript, speech.isListening]);
 
   // Restore the signed-in user before loading any patient data.
   useEffect(() => {
@@ -417,13 +429,13 @@ export default function App() {
   // Validate intake step
   const validateIntakeStep = (): boolean => {
     setIntakeError('');
-    if (intakeStep === 1) {
+    if (intakeStep === 1 && isAyurvedicPath) {
       if (!chiefConcern.trim()) {
         setIntakeError(t('intake.fillPrompt'));
         return false;
       }
     }
-    if (intakeStep === 1) {
+    if (intakeStep === 1 && isAyurvedicPath) {
       if (!symptomDuration.trim()) {
         setIntakeError(t('intake.fillPrompt'));
         return false;
@@ -446,7 +458,26 @@ export default function App() {
     return true;
   };
 
-  const symptomLabel = selectedSymptom === 'chestPain' ? t('intake.chestPain') : selectedSymptom === 'breathing' ? t('intake.breathing') : selectedSymptom === 'weakness' ? t('intake.weakness') : selectedSymptom === 'other' ? (otherSymptomText || t('intake.otherSymptom')) : '';
+  const isAyurvedicPath = carePath === 'ayurvedic';
+  const allopathicAnswersText = allopathicHealthQuestions[lang]
+    .map((question, index) => allopathicAnswers[index]?.trim() ? `${question.title}: ${allopathicAnswers[index].trim()}` : '')
+    .filter(Boolean)
+    .join('\n');
+  const reviewOfSystemsText = [reviewOfSystems.trim(), allopathicAnswersText]
+    .filter(Boolean)
+    .join('\n\n');
+  const symptomLabel = selectedSymptom === 'chestPain' ? (isAyurvedicPath ? 'Severe pain or discomfort' : t('intake.chestPain')) : selectedSymptom === 'breathing' ? (isAyurvedicPath ? 'Digestion or appetite' : t('intake.breathing')) : selectedSymptom === 'weakness' ? (isAyurvedicPath ? 'Sleep, stress, or low energy' : t('intake.weakness')) : selectedSymptom === 'other' ? (otherSymptomText || t('intake.otherSymptom')) : '';
+  const pathTitle = isAyurvedicPath ? 'Ayurvedic health story' : 'Allopathic health story';
+  const concernLabel = isAyurvedicPath ? 'What would you like Ayurvedic support with?' : t('intake.whatBrings');
+  const concernPlaceholder = isAyurvedicPath
+    ? 'For example: digestion, sleep, stress, pain, skin, energy, or a current concern'
+    : t('intake.placeholder');
+  const symptomQuestion = isAyurvedicPath
+    ? 'Which concern needs the most support today?'
+    : t('intake.symptomQ');
+  const symptomHelper = isAyurvedicPath
+    ? 'Choose the closest option. Urgent symptoms are still highlighted for your safety.'
+    : t('intake.symptomHelper');
 
   // Finish intake - save health story and generate report
   const finishIntake = async () => {
@@ -458,9 +489,9 @@ export default function App() {
       drug_allergy: drugAllergies || 'No known drug allergies reported',
       personal_history: personalHistory || 'Not reported',
       family_history: familyHistory || 'Not reported',
-      review_of_systems: reviewOfSystems || 'Not reported',
-      ayush_assessment: ayushMode ? (ayushAssessment || 'AYUSH context requested; detailed assessment pending') : '',
-      ayush_mode: ayushMode, prior_surgery: priorSurgery, has_red_flag: hasRedFlag,
+      review_of_systems: reviewOfSystemsText || 'Not reported',
+      ayush_assessment: '',
+      ayush_mode: false, prior_surgery: priorSurgery, has_red_flag: hasRedFlag,
       red_flag_note: hasRedFlag ? `${symptomLabel}${redFlagDetail ? ` - ${redFlagDetail}` : ''}` : '',
       status: hasRedFlag ? 'flagged' : 'complete', language: langNames[lang],
     }).select().single();
@@ -482,9 +513,9 @@ export default function App() {
         drug_allergy: drugAllergies || 'No known drug allergies reported',
         personal_history: personalHistory || 'Not reported',
         family_history: familyHistory || 'Not reported',
-        review_of_systems: reviewOfSystems || 'Not reported',
-        ayush_assessment: ayushMode ? (ayushAssessment || 'AYUSH context requested; detailed assessment pending') : '',
-        ayush_mode: ayushMode, prior_surgery: priorSurgery, has_red_flag: hasRedFlag,
+        review_of_systems: reviewOfSystemsText || 'Not reported',
+        ayush_assessment: '',
+        ayush_mode: false, prior_surgery: priorSurgery, has_red_flag: hasRedFlag,
         red_flag_note: hasRedFlag ? `${symptomLabel}${redFlagDetail ? ` - ${redFlagDetail}` : ''}` : '',
         physician_notes: '',
         diagnosis: '',
@@ -521,9 +552,8 @@ export default function App() {
     setFamilyHistory('');
     setPersonalHistory('');
     setReviewOfSystems('');
-    setAyushAssessment('');
+    setAllopathicAnswers(Array(10).fill(''));
     setEmergencyContact('');
-    setAyushMode(path === 'ayurvedic');
     setPriorSurgery(false);
     setHasRedFlag(false);
     setRedFlagDetail('');
@@ -595,6 +625,20 @@ export default function App() {
     setActiveReport(data as HealthReport);
     setIsEditingReport(false);
     setReportMsg('Clinical summary reviewed and saved.');
+  };
+
+  const generateAiReview = async () => {
+    if (!activeReport) return;
+    setGeneratingAiReview(true);
+    setReportMsg('');
+    const { data, error } = await supabase.functions.invoke('generate-clinical-draft', { body: { reportId: activeReport.id } });
+    setGeneratingAiReview(false);
+    if (error || !data?.review) {
+      setReportMsg(`Could not generate AI review: ${error?.message || data?.error || 'Please try again.'}`);
+      return;
+    }
+    setActiveReport({ ...activeReport, ai_review: data.review });
+    setReportMsg('AI document review draft generated. A clinician must review it before any care decision.');
   };
 
   const requestAadhaarOtp = async (event: React.FormEvent) => {
@@ -729,7 +773,7 @@ export default function App() {
                 <p className="eyebrow light">{t('hero.eyebrow')}</p>
                 <h2>{t('hero.title1')}<br /><em>{t('hero.title2')}</em></h2>
                 <p>{t('hero.body')}</p>
-                <button className="primary-button" onClick={openIntake}>
+                <button id="start-health-story" className="primary-button" onClick={openIntake}>
                   {speech.isListening ? <><span className="listening-bars"><i /><i /><i /></span> {t('hero.listening')}</> : <><Mic size={18} /> {t('hero.start')} <ArrowRight size={17} /></>}
                 </button>
                 <div className="hero-trust"><LockKeyhole size={14} /> {t('hero.private')} <span /> <span className="clock-icon">◷</span> {t('hero.takes')}</div>
@@ -748,10 +792,10 @@ export default function App() {
               <div className="journey-card panel">
                 <div className="panel-heading"><div><p className="eyebrow">{t('journey.eyebrow')}</p><h3>{t('journey.title')}</h3></div><span className="progress-label">{completedSteps} / 4 {t('activity.complete').toLowerCase()}</span></div>
                 <div className="progress-track"><span style={{ width: `${(completedSteps / 4) * 100}%` }} /></div>
-                <div className="steps">{stepKeys.map((step, index) => <button className={index < completedSteps ? 'step done' : index === completedSteps ? 'step current' : 'step'} key={index} onClick={() => index === 0 ? openIntake() : index === 2 ? setModal('upload') : undefined}><span className="step-number">{index < completedSteps ? <Check size={12} /> : index === completedSteps ? <Play size={12} fill="currentColor" /> : String(index + 1).padStart(2, '0')}</span><span><strong>{t(step.t)}</strong><small>{t(step.d)}</small></span>{index === completedSteps ? <ArrowRight size={17} className="step-arrow" /> : index < completedSteps ? <Check size={16} className="step-check" /> : <LockKeyhole size={15} className="muted-icon" />}</button>)}</div>
+                <div id="health-story-journey" className="steps">{stepKeys.map((step, index) => <button className={index < completedSteps ? 'step done' : index === completedSteps ? 'step current' : 'step'} key={index} onClick={() => index === 0 ? openIntake() : index === 2 ? setModal('upload') : undefined}><span className="step-number">{index < completedSteps ? <Check size={12} /> : index === completedSteps ? <Play size={12} fill="currentColor" /> : String(index + 1).padStart(2, '0')}</span><span><strong>{t(step.t)}</strong><small>{t(step.d)}</small></span>{index === completedSteps ? <ArrowRight size={17} className="step-arrow" /> : index < completedSteps ? <Check size={16} className="step-check" /> : <LockKeyhole size={15} className="muted-icon" />}</button>)}</div>
               </div>
               <div className="side-column">
-                <div className="quick-card panel"><div className="quick-icon"><ClipboardList size={19} /></div><div><p className="eyebrow">{t('quick.eyebrow')}</p><h3>{t('quick.upload')}</h3><p>{t('quick.uploadDesc')}</p><button className="text-button" onClick={() => setModal('upload')}>{t('quick.addDoc')} <Plus size={15} /></button></div></div>
+                <div id="upload-documents" className="quick-card panel"><div className="quick-icon"><ClipboardList size={19} /></div><div><p className="eyebrow">{t('quick.eyebrow')}</p><h3>{t('quick.upload')}</h3><p>{t('quick.uploadDesc')}</p><button className="text-button" onClick={() => setModal('upload')}>{t('quick.addDoc')} <Plus size={15} /></button></div></div>
                 <div className="privacy-card"><ShieldCheck size={20} /><div><strong>{t('privacy.title')}</strong><p>{t('privacy.body')}</p><button className="privacy-link" onClick={() => setModal('consent')}>{t('privacy.learn')} <ArrowRight size={14} /></button></div></div>
               </div>
             </section>
@@ -804,7 +848,7 @@ export default function App() {
             <p className="eyebrow">YOUR CARE, YOUR CHOICE</p>
             <h2 id="carepath-title">Choose your care path</h2>
             <p className="modal-copy">Both paths use the same secure health-story flow. Select the approach that feels right for you today.</p>
-            <div className="carepath-options">
+            <div id="care-path-options" className="carepath-options">
               <button type="button" className="carepath-option allopathic" onClick={() => startIntake('allopathic')}>
                 <span className="carepath-icon"><Stethoscope size={23} /></span>
                 <span><strong>Allopathic care</strong><small>Share symptoms, medicines, history, and records for modern clinical care.</small></span>
@@ -826,14 +870,15 @@ export default function App() {
         <div className="modal-backdrop">
           <div className="intake-modal" onClick={(e) => e.stopPropagation()}>
             <button className="modal-close" onClick={() => { setModal(null); speech.stopListening(); speech.stopSpeaking(); }}><X size={18} /></button>
-            <div className="intake-top"><div><p className="eyebrow">{t('intake.eyebrow')} {carePath && <span>• {carePath === 'ayurvedic' ? 'Ayurvedic care' : 'Allopathic care'}</span>}</p><h2>{intakeStep === 4 ? t('intake.titleReady') : t('intake.titleStart')}</h2></div><span className="intake-count">{intakeStep} / 4</span></div>
+            <div className="intake-top"><div><p className="eyebrow">{t('intake.eyebrow')} {carePath && <span>• {pathTitle}</span>}</p><h2>{intakeStep === 4 ? t('intake.titleReady') : t('intake.titleStart')}</h2></div><span className="intake-count">{intakeStep} / 4</span></div>
             <div className="intake-progress"><span style={{ width: `${intakeStep * 25}%` }} /></div>
             <div className="intake-steps">{['intake.aboutYou', 'intake.yourSymptoms', 'intake.yourRecords', 'intake.review'].map((key, index) => <span className={index + 1 <= intakeStep ? 'active' : ''} key={key}><i>{index + 1 < intakeStep ? <Check size={11} /> : index + 1}</i>{t(key)}</span>)}</div>
 
-            {intakeStep === 1 && <div className="intake-body">
+            {intakeStep === 1 && <div id="intake-concern" className="intake-body">
               <div className="audio-prompt"><div className="audio-icon"><Volume2 size={20} /></div><div><strong>{t('intake.voiceOrTouch')}</strong><p>{t('intake.voiceDesc', { lang: langNames[lang] })}</p></div><button className="round-audio" onClick={() => speech.isListening ? speech.stopListening() : speech.startListening()}>{speech.isListening ? <span className="mini-bars"><i /><i /><i /></span> : <Mic size={16} />}</button></div>
-              <label className="input-label">{t('intake.whatBrings')} <span className="required-asterisk">*</span></label>
-              <textarea className={`story-input ${intakeError && !chiefConcern.trim() ? 'field-error' : ''}`} placeholder={t('intake.placeholder')} value={chiefConcern} onChange={(e) => { setChiefConcern(e.target.value); speech.setTranscript(e.target.value); }} />
+              {isAyurvedicPath && <>
+              <label className="input-label">{concernLabel} <span className="required-asterisk">*</span></label>
+              <textarea className={`story-input ${intakeError && !chiefConcern.trim() ? 'field-error' : ''}`} placeholder={concernPlaceholder} value={chiefConcern} onChange={(e) => { setChiefConcern(e.target.value); speech.setTranscript(e.target.value); }} />
               {intakeError && !chiefConcern.trim() && <div className="error-msg">{t('intake.required')}</div>}
 
               <label className="input-label" style={{ marginTop: '14px' }}>{t('intake.symptomDuration')} <span className="required-asterisk">*</span></label>
@@ -844,8 +889,8 @@ export default function App() {
               <div className="severity-row">{severityOptions.map((opt) => <button key={opt.key} className={severity === opt.key ? 'severity-pill selected' : 'severity-pill'} onClick={() => setSeverity(opt.key)}>{t(opt.labelKey)}</button>)}</div>
               {intakeError && !severity && <div className="error-msg">{t('intake.required')}</div>}
 
-              <label className="input-label" style={{ marginTop: '14px' }}>{t('intake.currentMeds')}</label>
-              <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder={t('intake.currentMedsPlaceholder')} value={currentMeds} onChange={(e) => setCurrentMeds(e.target.value)} />
+              <label className="input-label" style={{ marginTop: '14px' }}>{isAyurvedicPath ? 'Current medicines or Ayurvedic remedies' : t('intake.currentMeds')}</label>
+              <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder={isAyurvedicPath ? 'Any medicines, herbs, supplements, or therapies you use' : t('intake.currentMedsPlaceholder')} value={currentMeds} onChange={(e) => setCurrentMeds(e.target.value)} />
 
               <label className="input-label" style={{ marginTop: '14px' }}>Past medical or surgical history</label>
               <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder="Previous conditions, admissions, or surgeries" value={pastMedicalHistory} onChange={(e) => setPastMedicalHistory(e.target.value)} />
@@ -853,8 +898,8 @@ export default function App() {
               <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder="Allergies or reactions to medicines" value={drugAllergies} onChange={(e) => setDrugAllergies(e.target.value)} />
               <label className="input-label" style={{ marginTop: '14px' }}>Family history</label>
               <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder="Relevant conditions in close family members" value={familyHistory} onChange={(e) => setFamilyHistory(e.target.value)} />
-              <label className="input-label" style={{ marginTop: '14px' }}>Personal history and lifestyle</label>
-              <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder="Diet, sleep, tobacco, alcohol, activity, or other relevant details" value={personalHistory} onChange={(e) => setPersonalHistory(e.target.value)} />
+              <label className="input-label" style={{ marginTop: '14px' }}>{isAyurvedicPath ? 'Daily routine and lifestyle (Ahara–Vihara)' : 'Personal history and lifestyle'}</label>
+              <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder={isAyurvedicPath ? 'Diet, sleep, activity, stress, and daily routine' : 'Diet, sleep, tobacco, alcohol, activity, or other relevant details'} value={personalHistory} onChange={(e) => setPersonalHistory(e.target.value)} />
               <label className="input-label" style={{ marginTop: '14px' }}>Other symptoms or body systems affected</label>
               <input className="story-input" style={{ height: 'auto', padding: '10px 12px' }} placeholder="For example: fever, cough, digestion, sleep, or urinary symptoms" value={reviewOfSystems} onChange={(e) => setReviewOfSystems(e.target.value)} />
 
@@ -862,17 +907,25 @@ export default function App() {
               <input className={`story-input ${intakeError && !emergencyContact.trim() ? 'field-error' : ''}`} style={{ height: 'auto', padding: '10px 12px' }} placeholder={t('intake.emergencyContactPlaceholder')} value={emergencyContact} onChange={(e) => setEmergencyContact(e.target.value)} />
               {intakeError && !emergencyContact.trim() && <div className="error-msg">{t('intake.required')}</div>}
 
-              <div className="choice-row" style={{ marginTop: '14px' }}><button className={ayushMode ? 'choice-card selected' : 'choice-card'} onClick={() => setAyushMode(!ayushMode)}><HeartPulse size={17} /><span><strong>Include Ayurvedic assessment</strong><small>Optional Prakriti, Vikriti, Agni and lifestyle context</small></span>{ayushMode && <Check size={15} />}</button><button className={priorSurgery ? 'choice-card selected' : 'choice-card'} onClick={() => setPriorSurgery(!priorSurgery)}><ClipboardList size={17} /><span><strong>{t('intake.pastSurgery')}</strong><small>{t('intake.pastSurgeryDetail')}</small></span>{priorSurgery && <Check size={15} />}</button></div>
-              {ayushMode && <><label className="input-label" style={{ marginTop: '14px' }}>AYUSH assessment</label><textarea className="story-input" placeholder="Prakriti, Vikriti, appetite (Agni), bowel habits (Koshtha), diet and lifestyle (Ahara-Vihara)" value={ayushAssessment} onChange={(e) => setAyushAssessment(e.target.value)} /></>}
+              <div className="choice-row single-choice" style={{ marginTop: '14px' }}><button className={priorSurgery ? 'choice-card selected' : 'choice-card'} onClick={() => setPriorSurgery(!priorSurgery)}><ClipboardList size={17} /><span><strong>{t('intake.pastSurgery')}</strong><small>{t('intake.pastSurgeryDetail')}</small></span>{priorSurgery && <Check size={15} />}</button></div>
+              </>}
+              {!isAyurvedicPath && <section className="allopathic-question-list" aria-label={t('intake.allopathicQuestionnaire')}>
+                <div className="allopathic-question-list-header"><span>{t('intake.allopathicQuestionnaire')}</span><b>10</b></div>
+                {allopathicHealthQuestions[lang].map((question, index) => <div className="allopathic-question-card" key={question.title}>
+                  <label className="input-label">{question.title}</label>
+                  <p>{question.question}</p>
+                  <textarea className="story-input" placeholder={question.placeholder} value={allopathicAnswers[index]} onChange={(event) => setAllopathicAnswers((answers) => answers.map((answer, answerIndex) => answerIndex === index ? event.target.value : answer))} />
+                </div>)}
+              </section>}
             </div>}
 
-            {intakeStep === 2 && <div className="intake-body">
-              <div className="question-title"><MessageCircle size={19} /><div><span>{t('intake.question02')}</span><strong>{t('intake.symptomQ')}</strong></div></div>
-              <p className="helper-text">{t('intake.symptomHelper')}</p>
+            {intakeStep === 2 && <div id="intake-symptoms" className="intake-body">
+              <div className="question-title"><MessageCircle size={19} /><div><span>{t('intake.question02')}</span><strong>{symptomQuestion}</strong></div></div>
+              <p className="helper-text">{symptomHelper}</p>
               <div className="symptom-grid">
-                <button className={selectedSymptom === 'chestPain' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('chestPain'); setHasRedFlag(true); setSymptomSelected(true); }}><div className="symptom-icon-3d"><AlertTriangle size={20} /></div><span>{t('intake.chestPain')}</span></button>
-                <button className={selectedSymptom === 'breathing' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('breathing'); setHasRedFlag(true); setSymptomSelected(true); }}><div className="symptom-icon-3d"><HeartPulse size={20} /></div><span>{t('intake.breathing')}</span></button>
-                <button className={selectedSymptom === 'weakness' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('weakness'); setHasRedFlag(true); setSymptomSelected(true); }}><div className="symptom-icon-3d"><Activity size={20} /></div><span>{t('intake.weakness')}</span></button>
+                <button className={selectedSymptom === 'chestPain' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('chestPain'); setHasRedFlag(true); setSymptomSelected(true); }}><div className="symptom-icon-3d"><AlertTriangle size={20} /></div><span>{isAyurvedicPath ? 'Severe pain or discomfort' : t('intake.chestPain')}</span></button>
+                <button className={selectedSymptom === 'breathing' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('breathing'); setHasRedFlag(true); setSymptomSelected(true); }}><div className="symptom-icon-3d"><HeartPulse size={20} /></div><span>{isAyurvedicPath ? 'Digestion or appetite' : t('intake.breathing')}</span></button>
+                <button className={selectedSymptom === 'weakness' ? 'symptom-card warning-selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('weakness'); setHasRedFlag(true); setSymptomSelected(true); }}><div className="symptom-icon-3d"><Activity size={20} /></div><span>{isAyurvedicPath ? 'Sleep, stress, or low energy' : t('intake.weakness')}</span></button>
                 <button className={selectedSymptom === 'other' ? 'symptom-card selected' : 'symptom-card'} onClick={() => { setSelectedSymptom('other'); setHasRedFlag(false); setSymptomSelected(true); }}><div className="symptom-icon-3d"><CircleHelp size={20} /></div><span>{t('intake.otherSymptom')}</span></button>
                 {selectedSymptom === 'other' && <textarea className="symptom-other-input" placeholder={t('intake.otherSymptomPlaceholder')} value={otherSymptomText} onChange={(e) => setOtherSymptomText(e.target.value)} />}
               </div>
@@ -880,7 +933,7 @@ export default function App() {
               {hasRedFlag && <div className="red-flag-notice"><AlertTriangle size={18} /><span><strong>Priority triage: please tell a care-team member now.</strong> This is not a diagnosis. We will attach your details to the clinician summary.<input className="story-input" style={{ height: 'auto', marginTop: 8, padding: '8px 10px' }} placeholder="When did this start? Is there breathlessness, fainting, sweating, or severe weakness?" value={redFlagDetail} onChange={(e) => setRedFlagDetail(e.target.value)} /></span></div>}
             </div>}
 
-            {intakeStep === 3 && <div className="intake-body">
+            {intakeStep === 3 && <div id="intake-records" className="intake-body">
               <div className="question-title"><ScanLine size={19} /><div><span>{t('intake.question03')}</span><strong>{t('intake.addRecords')}</strong></div></div>
               <p className="helper-text">{t('intake.recordsHelper')}</p>
               <button className="intake-dropzone" onClick={() => setModal('upload')}><Paperclip size={22} /><strong>{documents.length > 0 ? t('intake.docAdded') : t('intake.tapAdd')}</strong><span>{t('intake.docType')}</span></button>
@@ -890,13 +943,15 @@ export default function App() {
             {intakeStep === 4 && <div className="intake-body">
               <div className="summary-ready"><div className="summary-check"><Check size={25} /></div><div><strong>{t('intake.readyForReview')}</strong><span>{t('intake.structuredFrom')}</span></div></div>
               <div className="summary-list">
-                <div><span>{t('intake.chiefConcern')}</span><strong>{chiefConcern || t('intake.placeholder')}</strong></div>
-                <div><span>{t('intake.symptomQ')}</span><strong>{symptomLabel || '-'}</strong></div>
-                <div><span>{t('intake.symptomDuration')}</span><strong>{symptomDuration}</strong></div>
-                <div><span>{t('intake.severity')}</span><strong>{severity ? t(`intake.${severity}`) : '-'}</strong></div>
-                <div><span>{t('intake.currentMeds')}</span><strong>{currentMeds || '-'}</strong></div>
-                <div><span>{t('intake.emergencyContact')}</span><strong>{emergencyContact || '-'}</strong></div>
-                <div><span>{t('intake.historyCaptured')}</span><strong>{t('summary.hpi')} · {t('summary.pastMed')} · Family · Personal · Review of systems {ayushMode ? `· ${t('intake.ayushContext')}` : ''}</strong></div>
+                {isAyurvedicPath ? <>
+                  <div><span>{t('intake.chiefConcern')}</span><strong>{chiefConcern || t('intake.placeholder')}</strong></div>
+                  <div><span>{t('intake.symptomQ')}</span><strong>{symptomLabel || '-'}</strong></div>
+                  <div><span>{t('intake.symptomDuration')}</span><strong>{symptomDuration}</strong></div>
+                  <div><span>{t('intake.severity')}</span><strong>{severity ? t(`intake.${severity}`) : '-'}</strong></div>
+                  <div><span>{t('intake.currentMeds')}</span><strong>{currentMeds || '-'}</strong></div>
+                  <div><span>{t('intake.emergencyContact')}</span><strong>{emergencyContact || '-'}</strong></div>
+                  <div><span>{t('intake.historyCaptured')}</span><strong>{t('summary.hpi')} · {t('summary.pastMed')} · Family · Personal · Review of systems</strong></div>
+                </> : <div><span>{t('intake.allopathicQuestionnaire')}</span><strong>{allopathicAnswersText || '-'}</strong></div>}
                 <div><span>{t('intake.safetyScreening')}</span><strong className={hasRedFlag ? 'warning-text' : ''}>{hasRedFlag ? t('intake.priorityFlagged') : t('intake.noUrgent')}</strong></div>
               </div>
               <label className="consent-row"><button className={intakeConsent ? 'check-box checked' : 'check-box'} onClick={() => setIntakeConsent(!intakeConsent)}>{intakeConsent && <Check size={13} />}</button><span>{t('intake.consentShare')}</span></label>
@@ -983,7 +1038,7 @@ export default function App() {
                     <h2>{activeReport.report_title}</h2>
                     <p className="report-date">{t('report.generated')} {new Date(activeReport.created_at).toLocaleDateString(lang === 'en' ? 'en-GB' : lang === 'hi' ? 'hi-IN' : 'mr-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><button className="back-button" onClick={beginReportReview}>Review & amend</button><span className={`report-status-badge ${activeReport.status}`}>{t(`report.status${activeReport.status.charAt(0).toUpperCase()}${activeReport.status.slice(1)}`)}</span></div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="back-button" onClick={generateAiReview} disabled={generatingAiReview}><Sparkles size={14} /> {generatingAiReview ? 'Reading PDFs…' : 'Generate AI PDF review'}</button><button className="back-button" onClick={beginReportReview}>Review & amend</button><span className={`report-status-badge ${activeReport.status}`}>{t(`report.status${activeReport.status.charAt(0).toUpperCase()}${activeReport.status.slice(1)}`)}</span></div>
                 </div>
 
                 <div className="report-patient-bar">
@@ -1008,6 +1063,21 @@ export default function App() {
                   <div style={{ display: 'flex', gap: 10 }}><button className="primary-button" onClick={saveReportReview} disabled={savingReport}>{savingReport ? 'Saving…' : 'Save reviewed summary'} <Check size={16} /></button><button className="back-button" onClick={() => setIsEditingReport(false)}>Cancel</button></div>
                 </div>}
                 {reportMsg && <div className={`upload-msg ${reportMsg.startsWith('Could not') ? 'error' : 'success'}`}>{reportMsg}</div>}
+
+                {activeReport.ai_review?.generated_at && <div className="report-section ai-review-section">
+                  <div className="report-section-title"><Sparkles size={15} /> AI-assisted PDF review <span className="ai-review-badge">Clinician review required</span></div>
+                  <p className="ai-review-safety">{activeReport.ai_review.safety_note || 'This is an AI-generated draft based on extracted documents. It is not a diagnosis or prescription.'}</p>
+                  <div className="report-grid">
+                    <div className="report-grid-item"><label>Documents read</label><span>{activeReport.ai_review.source_document_count}</span></div>
+                    <div className="report-grid-item"><label>Patient summary</label><span>{activeReport.ai_review.patient_summary || '-'}</span></div>
+                  </div>
+                  <div className="ai-review-columns">
+                    <div><strong>PDF findings</strong><ul>{activeReport.ai_review.pdf_findings.length ? activeReport.ai_review.pdf_findings.map((finding, index) => <li key={`${finding}-${index}`}>{finding}</li>) : <li>No findings extracted.</li>}</ul></div>
+                    <div><strong>Items for clinician review</strong><ul>{activeReport.ai_review.clinician_questions.length ? activeReport.ai_review.clinician_questions.map((question, index) => <li key={`${question}-${index}`}>{question}</li>) : <li>No additional questions identified.</li>}</ul></div>
+                  </div>
+                  {!!activeReport.ai_review.urgent_flags.length && <div className="report-flag"><AlertTriangle size={18} /><span><strong>Potential urgent flags</strong> — {activeReport.ai_review.urgent_flags.join(' · ')}</span></div>}
+                  {!!activeReport.ai_review.medication_considerations.length && <div className="ai-review-considerations"><strong>Medication information from documents — clinician to verify</strong><ul>{activeReport.ai_review.medication_considerations.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul></div>}
+                </div>}
 
                 {activeReport.has_red_flag ? (
                   <div className="report-flag"><AlertTriangle size={18} /><span><strong>{t('report.redFlag')}</strong> — {activeReport.red_flag_note}</span></div>
@@ -1134,10 +1204,7 @@ export default function App() {
           </div>
         </div>
       )}
-      <div className="care-guide">
-        {guideOpen && <div className="care-guide-card" role="status"><strong><Leaf size={15} /> Veda, your care guide</strong><p>{guideMessage}</p></div>}
-        <button className="care-guide-button" type="button" aria-label="Open care guide" aria-expanded={guideOpen} onClick={() => setGuideOpen(!guideOpen)}><span className="guide-avatar"><Leaf size={22} /><i /></span><span>Need help?</span></button>
-      </div>
+      <VedaAssistant section={activeSection} modal={modal} />
     </div>
   );
 }
