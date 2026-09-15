@@ -11,7 +11,7 @@ import { translate, langNames, type Lang } from '@/lib/i18n';
 import { useSpeech } from '@/lib/useSpeech';
 
 type Section = 'Overview' | 'Clinical summary' | 'My history' | 'Documents';
-type ModalKind = 'intake' | 'upload' | 'profile' | 'consent' | 'report' | 'howitworks' | 'docview' | null;
+type ModalKind = 'carepath' | 'intake' | 'upload' | 'profile' | 'consent' | 'report' | 'howitworks' | 'docview' | null;
 
 const navKeys = ['nav.overview', 'nav.clinicalSummary', 'nav.myHistory', 'nav.documents'] as const;
 const navIcons = [Activity, FileSignature, History, FileText];
@@ -87,6 +87,7 @@ export default function App() {
   const [loadingDocumentPreview, setLoadingDocumentPreview] = useState(false);
 
   const [intakeStep, setIntakeStep] = useState(1);
+  const [carePath, setCarePath] = useState<'allopathic' | 'ayurvedic' | null>(null);
   const [chiefConcern, setChiefConcern] = useState('');
   const [symptomDuration, setSymptomDuration] = useState('');
   const [severity, setSeverity] = useState('');
@@ -128,7 +129,9 @@ export default function App() {
   const t = useCallback((key: string, params?: Record<string, string>) => translate(lang, key, params), [lang]);
 
   const persistLang = (l: Lang) => { setLang(l); localStorage.setItem('medikiosk-lang', l); };
-  const guideMessage = modal === 'intake'
+  const guideMessage = modal === 'carepath'
+    ? 'Choose allopathic or Ayurvedic care. Both options keep your health story private and follow the same guided steps.'
+    : modal === 'intake'
     ? `Tell me what you are feeling. You can type or use the microphone, and we will take this one step at a time.`
     : modal === 'upload'
       ? 'Add a prescription, lab report, or scan. I will keep it secure and ready for your care team.'
@@ -506,8 +509,9 @@ export default function App() {
     }
   };
 
-  const openIntake = () => {
+  const startIntake = (path: 'allopathic' | 'ayurvedic') => {
     setIntakeStep(1);
+    setCarePath(path);
     setChiefConcern('');
     setSymptomDuration('');
     setSeverity('');
@@ -519,7 +523,7 @@ export default function App() {
     setReviewOfSystems('');
     setAyushAssessment('');
     setEmergencyContact('');
-    setAyushMode(false);
+    setAyushMode(path === 'ayurvedic');
     setPriorSurgery(false);
     setHasRedFlag(false);
     setRedFlagDetail('');
@@ -530,6 +534,10 @@ export default function App() {
     setOtherSymptomText('');
     setModal('intake');
     setTimeout(() => speech.speak(t('intake.titleStart')), 300);
+  };
+
+  const openIntake = () => {
+    setModal('carepath');
   };
 
   const handleIntakeStep = (dir: 'next' | 'back') => {
@@ -787,12 +795,38 @@ export default function App() {
         </div>
       </main>
 
+      {/* Care-path selection */}
+      {modal === 'carepath' && (
+        <div className="modal-backdrop" onClick={() => setModal(null)}>
+          <div className="carepath-modal" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="carepath-title">
+            <button className="modal-close" onClick={() => setModal(null)} aria-label="Close"><X size={18} /></button>
+            <div className="modal-icon"><HeartPulse size={22} /></div>
+            <p className="eyebrow">YOUR CARE, YOUR CHOICE</p>
+            <h2 id="carepath-title">Choose your care path</h2>
+            <p className="modal-copy">Both paths use the same secure health-story flow. Select the approach that feels right for you today.</p>
+            <div className="carepath-options">
+              <button type="button" className="carepath-option allopathic" onClick={() => startIntake('allopathic')}>
+                <span className="carepath-icon"><Stethoscope size={23} /></span>
+                <span><strong>Allopathic care</strong><small>Share symptoms, medicines, history, and records for modern clinical care.</small></span>
+                <ArrowRight size={18} />
+              </button>
+              <button type="button" className="carepath-option ayurvedic" onClick={() => startIntake('ayurvedic')}>
+                <span className="carepath-icon"><Leaf size={23} /></span>
+                <span><strong>Ayurvedic care</strong><small>Follow the same flow with added Prakriti, Agni, diet, and lifestyle context.</small></span>
+                <ArrowRight size={18} />
+              </button>
+            </div>
+            <div className="carepath-note"><ShieldCheck size={15} /> You can change or add your care preferences later.</div>
+          </div>
+        </div>
+      )}
+
       {/* Intake Modal */}
       {modal === 'intake' && (
         <div className="modal-backdrop">
           <div className="intake-modal" onClick={(e) => e.stopPropagation()}>
             <button className="modal-close" onClick={() => { setModal(null); speech.stopListening(); speech.stopSpeaking(); }}><X size={18} /></button>
-            <div className="intake-top"><div><p className="eyebrow">{t('intake.eyebrow')}</p><h2>{intakeStep === 4 ? t('intake.titleReady') : t('intake.titleStart')}</h2></div><span className="intake-count">{intakeStep} / 4</span></div>
+            <div className="intake-top"><div><p className="eyebrow">{t('intake.eyebrow')} {carePath && <span>• {carePath === 'ayurvedic' ? 'Ayurvedic care' : 'Allopathic care'}</span>}</p><h2>{intakeStep === 4 ? t('intake.titleReady') : t('intake.titleStart')}</h2></div><span className="intake-count">{intakeStep} / 4</span></div>
             <div className="intake-progress"><span style={{ width: `${intakeStep * 25}%` }} /></div>
             <div className="intake-steps">{['intake.aboutYou', 'intake.yourSymptoms', 'intake.yourRecords', 'intake.review'].map((key, index) => <span className={index + 1 <= intakeStep ? 'active' : ''} key={key}><i>{index + 1 < intakeStep ? <Check size={11} /> : index + 1}</i>{t(key)}</span>)}</div>
 
