@@ -7,6 +7,11 @@
     <title>MediKiosk · Your health story, simplified</title>
     <meta name="twitter:card" content="summary_large_image" />
 
+    <script data-pages-branch-fallback>
+      if (location.hostname.endsWith('.github.io') && !location.pathname.includes('/dist/')) {
+        location.replace('./dist/');
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </head>
   <body>
