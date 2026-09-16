@@ -34,6 +34,7 @@ export function useSpeech(lang: Lang) {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechError, setSpeechError] = useState('');
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
 
@@ -42,10 +43,11 @@ export function useSpeech(lang: Lang) {
   }, []);
 
   const startListening = useCallback(() => {
+    setSpeechError('');
     const speechWindow = window as SpeechWindow;
     const SR = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!SR) {
-      console.warn('SpeechRecognition not supported in this browser');
+      setSpeechError('Voice input is not supported in this browser. Please type your answer.');
       return false;
     }
     try {
@@ -65,6 +67,9 @@ export function useSpeech(lang: Lang) {
     rec.onend = () => setIsListening(false);
     rec.onerror = (e: SpeechErrorEvent) => {
       console.warn('Speech recognition error:', e.error);
+      setSpeechError(e.error === 'not-allowed'
+        ? 'Microphone access is blocked. Allow microphone access for this site and try again.'
+        : `Voice input stopped: ${e.error}. Please try again or type your answer.`);
       setIsListening(false);
     };
     try {
@@ -73,6 +78,7 @@ export function useSpeech(lang: Lang) {
       setIsListening(true);
     } catch (err) {
       console.warn('Failed to start recognition:', err);
+      setSpeechError('Could not start the microphone. Please try again or type your answer.');
       setIsListening(false);
       return false;
     }
@@ -85,28 +91,47 @@ export function useSpeech(lang: Lang) {
   }, []);
 
   const speak = useCallback((text: string) => {
-    if (!synthRef.current) return;
-    synthRef.current.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = langCodes[lang];
-    utter.rate = 0.9;
-    const pickVoice = () => {
-      const voices = synthRef.current?.getVoices() || [];
-      if (voices.length === 0) return;
+    const synth = synthRef.current;
+    if (!synth || !('SpeechSynthesisUtterance' in window)) {
+      setSpeechError('Audio playback is not supported in this browser.');
+      return;
+    }
+    setSpeechError('');
+    synth.cancel();
+    const speakNow = () => {
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = langCodes[lang];
+      utter.rate = 0.9;
       const langPrefix = langCodes[lang].split('-')[0];
-      const match = voices.find((v) => v.lang.startsWith(langPrefix)) || voices.find((v) => v.lang.startsWith('en'));
-      if (match) utter.voice = match;
+      const voice = synth.getVoices().find((item) => item.lang.toLowerCase().startsWith(langPrefix))
+        || synth.getVoices().find((item) => item.lang.toLowerCase().startsWith('en'));
+      if (voice) utter.voice = voice;
+      utter.onstart = () => setIsSpeaking(true);
+      utter.onend = () => setIsSpeaking(false);
+      utter.onerror = () => {
+        setIsSpeaking(false);
+        setSpeechError('Audio playback could not start. Please try the Listen button again.');
+      };
+      synth.speak(utter);
     };
-    pickVoice();
-    utter.onstart = () => setIsSpeaking(true);
-    utter.onend = () => setIsSpeaking(false);
-    utter.onerror = () => setIsSpeaking(false);
-    synthRef.current.speak(utter);
+    if (synth.getVoices().length > 0) {
+      speakNow();
+    } else {
+      const loadVoices = () => {
+        synth.removeEventListener('voiceschanged', loadVoices);
+        speakNow();
+      };
+      synth.addEventListener('voiceschanged', loadVoices, { once: true });
+      window.setTimeout(() => {
+        synth.removeEventListener('voiceschanged', loadVoices);
+        if (!isSpeaking) speakNow();
+      }, 500);
+    }
   }, [lang]);
 
   useEffect(() => {
     if (!synthRef.current) return;
-    synthRef.current.onvoiceschanged = () => { synthRef.current?.getVoices(); };
+    synthRef.current.getVoices();
   }, []);
 
   const stopSpeaking = useCallback(() => {
@@ -119,5 +144,5 @@ export function useSpeech(lang: Lang) {
     synthRef.current?.cancel();
   }, []);
 
-  return { isListening, transcript, isSpeaking, startListening, stopListening, speak, stopSpeaking, setTranscript };
+  return { isListening, transcript, isSpeaking, speechError, startListening, stopListening, speak, stopSpeaking, setTranscript };
 }
