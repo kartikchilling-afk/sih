@@ -59,3 +59,12 @@ npm run build
 ```
 
 For GitHub Pages, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` under **Settings -> Secrets and variables -> Actions**. The deployment should not be published without both values.
+
+## Cloned voice playback
+
+Voice-clone credentials stay in Supabase, never in the GitHub Pages build. Configure and deploy the function after linking the project:
+
+```sh
+supabase secrets set ELEVENLABS_API_KEY=YOUR_PRIVATE_KEY ELEVENLABS_VOICE_ID=YOUR_APPROVED_VOICE_ID
+supabase functions deploy speak-cloned-voice
+```

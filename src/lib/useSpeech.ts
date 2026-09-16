@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Lang } from './i18n';
+import { supabase } from './supabase';
 
 const langCodes: Record<Lang, string> = {
   en: 'en-US',
@@ -40,6 +41,8 @@ export function useSpeech(lang: Lang) {
   const speechRequestRef = useRef(0);
   const removeVoiceListenerRef = useRef<(() => void) | null>(null);
   const voiceLoadTimeoutRef = useRef<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     synthRef.current = window.speechSynthesis;
@@ -102,7 +105,7 @@ export function useSpeech(lang: Lang) {
     setIsListening(false);
   }, []);
 
-  const speak = useCallback((text: string) => {
+  const speakWithBrowser = useCallback((text: string) => {
     const synth = synthRef.current;
     if (!synth || !('SpeechSynthesisUtterance' in window)) {
       setSpeechError('Audio playback is not supported in this browser.');
@@ -161,6 +164,43 @@ export function useSpeech(lang: Lang) {
     }
   }, [lang]);
 
+  const speak = useCallback((text: string) => {
+    if (import.meta.env.VITE_VOICE_CLONE_ENABLED !== 'true') {
+      speakWithBrowser(text);
+      return;
+    }
+    void (async () => {
+      const request = ++speechRequestRef.current;
+      synthRef.current?.cancel();
+      audioRef.current?.pause();
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+      const { data, error } = await supabase.functions.invoke('speak-cloned-voice', { body: { text, language: lang } });
+      if (request !== speechRequestRef.current) return;
+      if (error || !(data instanceof Blob)) {
+        setSpeechError('The cloned voice is unavailable, so browser audio is being used.');
+        speakWithBrowser(text);
+        return;
+      }
+      const url = URL.createObjectURL(data);
+      audioUrlRef.current = url;
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onplay = () => { if (request === speechRequestRef.current) setIsSpeaking(true); };
+      audio.onended = () => { if (request === speechRequestRef.current) setIsSpeaking(false); };
+      audio.onerror = () => {
+        if (request === speechRequestRef.current) {
+          setIsSpeaking(false);
+          setSpeechError('The cloned voice audio could not be played.');
+        }
+      };
+      try {
+        await audio.play();
+      } catch {
+        setSpeechError('Audio playback was blocked. Tap Listen to try again.');
+      }
+    })();
+  }, [lang, speakWithBrowser]);
+
   useEffect(() => {
     if (!synthRef.current) return;
     synthRef.current.getVoices();
@@ -175,6 +215,11 @@ export function useSpeech(lang: Lang) {
       voiceLoadTimeoutRef.current = null;
     }
     synthRef.current?.cancel();
+    audioRef.current?.pause();
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
     setIsSpeaking(false);
   }, []);
 
@@ -183,6 +228,8 @@ export function useSpeech(lang: Lang) {
     removeVoiceListenerRef.current?.();
     if (voiceLoadTimeoutRef.current !== null) window.clearTimeout(voiceLoadTimeoutRef.current);
     synthRef.current?.cancel();
+    audioRef.current?.pause();
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
   }, []);
 
   return { isListening, transcript, isSpeaking, speechError, startListening, stopListening, speak, stopSpeaking, setTranscript };

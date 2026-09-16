@@ -31,6 +31,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_VOICE_CLONE_ENABLED: "true"
         run: |
           test -n "$VITE_SUPABASE_URL" || { echo "Missing VITE_SUPABASE_URL repository secret"; exit 1; }
           echo "$VITE_SUPABASE_URL" | grep -Eq '^https://[^/]+\.supabase\.co$' || { echo "VITE_SUPABASE_URL must be a full https://<project-ref>.supabase.co URL"; exit 1; }
