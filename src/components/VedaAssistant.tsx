@@ -65,14 +65,29 @@ function normalizeLanguage(lang: string): Language {
   return 'en';
 }
 
+let vedaSpeechRequest = 0;
+let removeVedaVoiceListener: (() => void) | null = null;
+let vedaVoiceLoadTimeout: number | null = null;
+
+function stopVedaSpeech() {
+  vedaSpeechRequest += 1;
+  removeVedaVoiceListener?.();
+  removeVedaVoiceListener = null;
+  if (vedaVoiceLoadTimeout !== null) {
+    window.clearTimeout(vedaVoiceLoadTimeout);
+    vedaVoiceLoadTimeout = null;
+  }
+  window.speechSynthesis?.cancel();
+}
+
 function speakVeda(text: string, lang: Language) {
   if (!('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel(); 
+  stopVedaSpeech();
+  const request = ++vedaSpeechRequest;
+  window.speechSynthesis.resume();
 
-  let spoken = false;
   const speak = () => {
-    if (spoken) return;
-    spoken = true;
+    if (request !== vedaSpeechRequest) return;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 0.90; 
     utterance.pitch = 1.05; 
@@ -97,7 +112,13 @@ function speakVeda(text: string, lang: Language) {
     speak();
   } else {
     window.speechSynthesis.addEventListener('voiceschanged', speak, { once: true });
-    setTimeout(speak, 250);
+    removeVedaVoiceListener = () => window.speechSynthesis.removeEventListener('voiceschanged', speak);
+    vedaVoiceLoadTimeout = window.setTimeout(() => {
+      removeVedaVoiceListener?.();
+      removeVedaVoiceListener = null;
+      vedaVoiceLoadTimeout = null;
+      speak();
+    }, 500);
   }
 }
 
@@ -252,6 +273,7 @@ export function VedaAssistant({
   
   useEffect(() => {
     if ('speechSynthesis' in window) window.speechSynthesis.getVoices();
+    return stopVedaSpeech;
   }, []);
 
   const fontStyle = activeLang === 'hi' || activeLang === 'mr' ? { fontFamily: '"Noto Sans Devanagari", "Mukta", sans-serif' } : {};

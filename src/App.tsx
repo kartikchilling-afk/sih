@@ -126,6 +126,7 @@ export default function App() {
   const [redFlagDetail, setRedFlagDetail] = useState('');
   const [intakeConsent, setIntakeConsent] = useState(false);
   const [intakeError, setIntakeError] = useState('');
+  const [isFinishingIntake, setIsFinishingIntake] = useState(false);
   const [symptomSelected, setSymptomSelected] = useState(false);
   const [selectedSymptom, setSelectedSymptom] = useState<string>('');
   const [otherSymptomText, setOtherSymptomText] = useState('');
@@ -151,16 +152,13 @@ export default function App() {
 
   const persistLang = (l: Lang) => { setLang(l); localStorage.setItem('medikiosk-lang', l); };
 
-  // Sync speech transcript into chiefConcern when listening
+  // The final recognition result can arrive just as the browser stops listening,
+  // so do not gate this on isListening or the last phrase may be discarded.
   useEffect(() => {
-    if (speech.isListening && speech.transcript) {
-      if (carePath === 'allopathic') {
-        setAllopathicAnswers((answers) => [speech.transcript, ...answers.slice(1)]);
-      } else {
-        setChiefConcern(speech.transcript);
-      }
+    if (speech.transcript) {
+      setChiefConcern(speech.transcript);
     }
-  }, [carePath, speech.transcript, speech.isListening]);
+  }, [carePath, speech.transcript]);
 
   // Restore the signed-in user before loading any patient data.
   useEffect(() => {
@@ -309,16 +307,19 @@ export default function App() {
     for (const ct of consentTypes) {
       const granted = consentForm[ct.key] ?? false;
       const existing = consents.find((c) => c.consent_type === ct.key);
-      if (existing) {
-        await supabase.from('consent_records').update({
+      const { error } = existing
+        ? await supabase.from('consent_records').update({
           granted, granted_at: granted ? new Date().toISOString() : null,
           revoked_at: !granted ? new Date().toISOString() : null,
-        }).eq('id', existing.id);
-      } else {
-        await supabase.from('consent_records').insert({
+        }).eq('id', existing.id)
+        : await supabase.from('consent_records').insert({
           patient_id: patientId, consent_type: ct.key, granted,
           granted_at: granted ? new Date().toISOString() : null,
         });
+      if (error) {
+        setSavingConsent(false);
+        setConsentMsg(`Could not save consent: ${error.message}`);
+        return;
       }
     }
     setSavingConsent(false);
@@ -451,13 +452,13 @@ export default function App() {
   // Validate intake step
   const validateIntakeStep = (): boolean => {
     setIntakeError('');
-    if (intakeStep === 1 && isAyurvedicPath) {
+    if (intakeStep === 1) {
       if (!chiefConcern.trim()) {
         setIntakeError(t('intake.fillPrompt'));
         return false;
       }
     }
-    if (intakeStep === 1 && isAyurvedicPath) {
+    if (intakeStep === 1 && !isAyurvedicPath) {
       if (!symptomDuration.trim()) {
         setIntakeError(t('intake.fillPrompt'));
         return false;
@@ -489,21 +490,17 @@ export default function App() {
     .filter(Boolean)
     .join('\n\n');
   const symptomLabel = selectedSymptom === 'chestPain' ? (isAyurvedicPath ? 'Severe pain or discomfort' : t('intake.chestPain')) : selectedSymptom === 'breathing' ? (isAyurvedicPath ? 'Digestion or appetite' : t('intake.breathing')) : selectedSymptom === 'weakness' ? (isAyurvedicPath ? 'Sleep, stress, or low energy' : t('intake.weakness')) : selectedSymptom === 'other' ? (otherSymptomText || t('intake.otherSymptom')) : '';
-  const pathTitle = isAyurvedicPath ? 'Allopathic health story' : 'Ayurvedic health story';
-  const concernLabel = isAyurvedicPath ? 'What would you like Allopathic support with?' : t('intake.whatBrings');
-  const concernPlaceholder = isAyurvedicPath
-    ? 'For example: digestion, sleep, stress, pain, skin, energy, or a current concern'
-    : t('intake.placeholder');
-  const symptomQuestion = isAyurvedicPath
-    ? 'Which concern needs the most support today?'
-    : t('intake.symptomQ');
-  const symptomHelper = isAyurvedicPath
-    ? 'Choose the closest option. Urgent symptoms are still highlighted for your safety.'
-    : t('intake.symptomHelper');
+  const pathTitle = isAyurvedicPath ? 'Ayurvedic health story' : 'Allopathic health story';
+  const concernLabel = t('intake.whatBrings');
+  const concernPlaceholder = t('intake.placeholder');
+  const symptomQuestion = t('intake.symptomQ');
+  const symptomHelper = t('intake.symptomHelper');
 
   // Finish intake - save health story and generate report
   const finishIntake = async () => {
-    if (!patientId) return;
+    if (!patientId || isFinishingIntake) return;
+    setIsFinishingIntake(true);
+    try {
     const { data: storyData, error: storyError } = await supabase.from('health_stories').insert({
       patient_id: patientId, chief_concern: chiefConcern,
       history_of_present_illness: `Symptom duration: ${symptomDuration}. Severity: ${severity}. Current medications: ${currentMeds || 'None reported'}.`,
@@ -512,8 +509,8 @@ export default function App() {
       personal_history: personalHistory || 'Not reported',
       family_history: familyHistory || 'Not reported',
       review_of_systems: reviewOfSystemsText || 'Not reported',
-      ayush_assessment: '',
-      ayush_mode: false, prior_surgery: priorSurgery, has_red_flag: hasRedFlag,
+      ayush_assessment: isAyurvedicPath ? allopathicAnswersText || 'Not reported' : '',
+      ayush_mode: isAyurvedicPath, prior_surgery: priorSurgery, has_red_flag: hasRedFlag,
       red_flag_note: hasRedFlag ? `${symptomLabel}${redFlagDetail ? ` - ${redFlagDetail}` : ''}` : '',
       status: hasRedFlag ? 'flagged' : 'complete', language: langNames[lang],
     }).select().single();
@@ -536,8 +533,8 @@ export default function App() {
         personal_history: personalHistory || 'Not reported',
         family_history: familyHistory || 'Not reported',
         review_of_systems: reviewOfSystemsText || 'Not reported',
-        ayush_assessment: '',
-        ayush_mode: false, prior_surgery: priorSurgery, has_red_flag: hasRedFlag,
+        ayush_assessment: isAyurvedicPath ? allopathicAnswersText || 'Not reported' : '',
+        ayush_mode: isAyurvedicPath, prior_surgery: priorSurgery, has_red_flag: hasRedFlag,
         red_flag_note: hasRedFlag ? `${symptomLabel}${redFlagDetail ? ` - ${redFlagDetail}` : ''}` : '',
         physician_notes: '',
         diagnosis: '',
@@ -547,7 +544,11 @@ export default function App() {
         status: 'generated',
         language: langNames[lang],
       });
-      if (reportError) console.error('Failed to generate report:', reportError.message);
+      if (reportError) {
+        setIntakeError(`Your health story was saved, but the report could not be generated. ${reportError.message}`);
+        await loadStories();
+        return;
+      }
     }
 
     setModal(null);
@@ -559,6 +560,9 @@ export default function App() {
       logActivity('health_story_started', t('intake.readyForReview'), '', hasRedFlag ? 'flagged' : 'complete');
       logActivity('report_generated', rTitle, '', 'complete');
       setActiveSection('Clinical summary');
+    }
+    } finally {
+      setIsFinishingIntake(false);
     }
   };
 
@@ -585,7 +589,9 @@ export default function App() {
     setSelectedSymptom('');
     setOtherSymptomText('');
     setModal('intake');
-    setTimeout(() => speech.speak(t('intake.titleStart')), 300);
+    // Keep this in the click handler: delayed playback is blocked by some
+    // deployed browsers because it no longer counts as a user interaction.
+    speech.speak(t('intake.titleStart'));
   };
 
   const openIntake = () => {
@@ -614,12 +620,7 @@ export default function App() {
     setReportMsg('');
     setModal('report');
     const { data } = await supabase.from('health_reports').select('*').eq('health_story_id', storyId).maybeSingle();
-    if (data) {
-      setActiveReport(data as HealthReport);
-    } else {
-      const { data: fallback } = await supabase.from('health_reports').select('*').eq('patient_id', patientId || '').order('created_at', { ascending: false }).limit(1).maybeSingle();
-      setActiveReport(fallback ? (fallback as HealthReport) : null);
-    }
+    setActiveReport(data ? (data as HealthReport) : null);
     setLoadingReport(false);
   };
 
@@ -873,12 +874,12 @@ export default function App() {
             <div id="care-path-options" className="carepath-options">
               <button type="button" className="carepath-option allopathic" onClick={() => startIntake('allopathic')}>
                 <span className="carepath-icon"><Stethoscope size={23} /></span>
-                <span><strong>Ayurvedic care</strong><small>Share symptoms, medicines, history, and records for modern clinical care.</small></span>
+                <span><strong>Allopathic care</strong><small>Share symptoms, medicines, history, and records for modern clinical care.</small></span>
                 <ArrowRight size={18} />
               </button>
               <button type="button" className="carepath-option ayurvedic" onClick={() => startIntake('ayurvedic')}>
                 <span className="carepath-icon"><Leaf size={23} /></span>
-                <span><strong>Allopathic care</strong><small>Follow the same flow with added Prakriti, Agni, diet, and lifestyle context.</small></span>
+                <span><strong>Ayurvedic care</strong><small>Follow the same flow with added Prakriti, Agni, diet, and lifestyle context.</small></span>
                 <ArrowRight size={18} />
               </button>
             </div>
@@ -899,6 +900,11 @@ export default function App() {
             {intakeStep === 1 && <div id="intake-concern" className="intake-body">
               <div className="audio-prompt"><div className="audio-icon"><Volume2 size={20} /></div><div><strong>{t('intake.voiceOrTouch')}</strong><p>{t('intake.voiceDesc', { lang: langNames[lang] })}</p>{speech.speechError && <small className="voice-error" role="status">{speech.speechError}</small>}</div><button className="round-audio" onClick={() => speech.isListening ? speech.stopListening() : speech.startListening()} aria-label={speech.isListening ? 'Stop voice input' : 'Start voice input'}>{speech.isListening ? <span className="mini-bars"><i /><i /><i /></span> : <Mic size={16} />}</button></div>
               {isAyurvedicPath && <>
+              <label className="input-label">{concernLabel} <span className="required-asterisk">*</span></label>
+              <textarea className={`story-input ${intakeError && !chiefConcern.trim() ? 'field-error' : ''}`} placeholder={concernPlaceholder} value={chiefConcern} onChange={(e) => { setChiefConcern(e.target.value); speech.setTranscript(e.target.value); }} />
+              {intakeError && !chiefConcern.trim() && <div className="error-msg">{t('intake.required')}</div>}
+              </>}
+              {!isAyurvedicPath && <>
               <label className="input-label">{concernLabel} <span className="required-asterisk">*</span></label>
               <textarea className={`story-input ${intakeError && !chiefConcern.trim() ? 'field-error' : ''}`} placeholder={concernPlaceholder} value={chiefConcern} onChange={(e) => { setChiefConcern(e.target.value); speech.setTranscript(e.target.value); }} />
               {intakeError && !chiefConcern.trim() && <div className="error-msg">{t('intake.required')}</div>}
@@ -931,7 +937,7 @@ export default function App() {
 
               <div className="choice-row single-choice" style={{ marginTop: '14px' }}><button className={priorSurgery ? 'choice-card selected' : 'choice-card'} onClick={() => setPriorSurgery(!priorSurgery)}><ClipboardList size={17} /><span><strong>{t('intake.pastSurgery')}</strong><small>{t('intake.pastSurgeryDetail')}</small></span>{priorSurgery && <Check size={15} />}</button></div>
               </>}
-              {!isAyurvedicPath && <section className="allopathic-question-list" aria-label={t('intake.allopathicQuestionnaire')}>
+              {isAyurvedicPath && <section className="allopathic-question-list" aria-label={t('intake.allopathicQuestionnaire')}>
                 <div className="allopathic-question-list-header"><span>{t('intake.allopathicQuestionnaire')}</span><b>10</b></div>
                 {allopathicHealthQuestions[lang].map((question, index) => <div className="allopathic-question-card" key={question.title}>
                   <label className="input-label">{question.title}</label>
@@ -979,7 +985,7 @@ export default function App() {
               <label className="consent-row"><button className={intakeConsent ? 'check-box checked' : 'check-box'} onClick={() => setIntakeConsent(!intakeConsent)}>{intakeConsent && <Check size={13} />}</button><span>{t('intake.consentShare')}</span></label>
             </div>}
 
-            <div className="intake-footer">{intakeStep > 1 ? <button className="back-button" onClick={() => handleIntakeStep('back')}>{t('intake.back')}</button> : <span />}{intakeStep < 4 ? <button className="primary-button" onClick={() => handleIntakeStep('next')}>{intakeStep === 3 ? t('intake.buildSummary') : t('intake.continue')} <ArrowRight size={16} /></button> : <button className="primary-button" onClick={finishIntake} disabled={!intakeConsent}>{t('intake.finish')} <Check size={16} /></button>}</div>
+            <div className="intake-footer">{intakeStep > 1 ? <button className="back-button" onClick={() => handleIntakeStep('back')} disabled={isFinishingIntake}>{t('intake.back')}</button> : <span />}{intakeStep < 4 ? <button className="primary-button" onClick={() => handleIntakeStep('next')} disabled={isFinishingIntake}>{intakeStep === 3 ? t('intake.buildSummary') : t('intake.continue')} <ArrowRight size={16} /></button> : <button className="primary-button" onClick={finishIntake} disabled={!intakeConsent || isFinishingIntake}>{isFinishingIntake ? t('common.loading') : t('intake.finish')} <Check size={16} /></button>}</div>
           </div>
         </div>
       )}
