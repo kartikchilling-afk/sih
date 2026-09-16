@@ -98,7 +98,10 @@ export function useSpeech(lang: Lang) {
     }
     setSpeechError('');
     synth.cancel();
+    let hasSpoken = false;
     const speakNow = () => {
+      if (hasSpoken) return;
+      hasSpoken = true;
       const utter = new SpeechSynthesisUtterance(text);
       utter.lang = langCodes[lang];
       utter.rate = 0.9;
@@ -124,7 +127,7 @@ export function useSpeech(lang: Lang) {
       synth.addEventListener('voiceschanged', loadVoices, { once: true });
       window.setTimeout(() => {
         synth.removeEventListener('voiceschanged', loadVoices);
-        if (!isSpeaking) speakNow();
+        speakNow();
       }, 500);
     }
   }, [lang]);
